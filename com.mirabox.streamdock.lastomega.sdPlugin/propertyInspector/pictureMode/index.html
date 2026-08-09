@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Last Omega — Picture Mode</title>
+  <link rel="stylesheet" href="../../static/css/sdpi.css" />
+</head>
+<body>
+  <div class="sdpi-wrapper" style="display: none;">
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Display</div>
+      <select class="sdpi-item-value select" id="nameFilter">
+        <option value="MO32U2">MO32U2</option>
+      </select>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Poll sec</div>
+      <input class="sdpi-item-value" id="pollSec" type="number" min="1" max="3600" step="1" value="5" />
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Status</div>
+      <div class="sdpi-item-value" id="statusText">—</div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Modes</div>
+      <div class="sdpi-item-value" id="modesText">—</div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Actions</div>
+      <button class="sdpi-item-value" id="btnRefresh">Refresh</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnPrev">Prev</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnNext">Next</button>
+    </div>
+  </div>
+
+  <script src="../utils/common.js"></script>
+  <script src="../utils/action.js"></script>
+  <script src="./index.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "Name": "Last Omega",
+  "Description": "MiraBox N4 Pro × Gigabyte MO32U2 — 旋钮直达，告别 OSD。HDR、亮度、准星与图像模式",
+  "com.mirabox.streamdock.lastomega.hdr": {
+    "Name": "HDR",
+    "Tooltip": "开关 Gigabyte MO32U2 的 Windows HDR"
+  },
+  "com.mirabox.streamdock.lastomega.brightness": {
+    "Name": "亮度",
+    "Tooltip": "亮度旋钮 — SDR 用 %，HDR 下 SDR 内容用 nits"
+  },
+  "com.mirabox.streamdock.lastomega.crosshair": {
+    "Name": "准星",
+    "Tooltip": "开关面板准星（OSD Sidekick HID）"
+  },
+  "com.mirabox.streamdock.lastomega.pictureMode": {
+    "Name": "图像模式",
+    "Tooltip": "切换图像模式 — 转动预览，停转写入"
+  },
+  "Category": "Last Omega"
+}

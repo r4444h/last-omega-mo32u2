@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Last Omega — Brightness</title>
+  <link rel="stylesheet" href="../../static/css/sdpi.css" />
+</head>
+<body>
+  <div class="sdpi-wrapper" style="display: none;">
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Display</div>
+      <select class="sdpi-item-value select" id="nameFilter">
+        <option value="MO32U2">MO32U2</option>
+      </select>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Step SDR %</div>
+      <input class="sdpi-item-value" id="stepSdr" type="number" min="0.1" max="100" step="any" value="1" list="stepPresets" />
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Step HDR nits</div>
+      <input class="sdpi-item-value" id="stepHdr" type="number" min="0.1" max="1000" step="any" value="10" list="stepPresets" />
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">HDR min</div>
+      <input class="sdpi-item-value" id="hdrMin" type="number" min="1" max="10000" step="any" value="80" />
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">HDR max</div>
+      <input class="sdpi-item-value" id="hdrMax" type="number" min="1" max="10000" step="any" value="480" />
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Poll sec</div>
+      <input class="sdpi-item-value" id="pollSec" type="number" min="1" max="3600" step="1" value="3" list="pollPresets" />
+    </div>
+
+    <datalist id="stepPresets">
+      <option value="0.5"></option>
+      <option value="1"></option>
+      <option value="2"></option>
+      <option value="3"></option>
+      <option value="5"></option>
+      <option value="10"></option>
+      <option value="15"></option>
+      <option value="20"></option>
+      <option value="25"></option>
+      <option value="50"></option>
+    </datalist>
+
+    <datalist id="pollPresets">
+      <option value="1"></option>
+      <option value="2"></option>
+      <option value="3"></option>
+      <option value="5"></option>
+      <option value="10"></option>
+      <option value="15"></option>
+      <option value="30"></option>
+      <option value="60"></option>
+    </datalist>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Status</div>
+      <div class="sdpi-item-value" id="statusText">—</div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Hint</div>
+      <div class="sdpi-item-value" id="hintText">
+        SDR: 0..100%. HDR: min/max nits.<br/>
+        Шаг может быть дробным (0.5 и т.д.).<br/>
+        У границы значение clamp, лишние команды не шлём.
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnRefresh">Refresh</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnDown">−</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnUp">+</button>
+    </div>
+  </div>
+
+  <script src="../utils/common.js"></script>
+  <script src="../utils/action.js"></script>
+  <script src="./index.js"></script>
+</body>
+</html>

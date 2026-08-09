@@ -1,0 +1,148 @@
+{
+  "Actions": [
+    {
+      "Icon": "static/CH.png",
+      "Name": "HDR Toggle",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        },
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        }
+      ],
+      "Settings": {
+        "mode": "toggle",
+        "nameFilter": "MO32U2"
+      },
+      "Controllers": ["Keypad", "Information"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "Tooltip": "Включение / выключение HDR для Gigabyte MO32U2",
+      "UUID": "com.mirabox.streamdock.lastomega.hdr",
+      "PropertyInspectorPath": "propertyInspector/hdr/index.html"
+    },
+    {
+      "Icon": "static/CH.png",
+      "Name": "Brightness",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        },
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        }
+      ],
+      "Settings": {
+        "nameFilter": "MO32U2",
+        "stepSdr": 1,
+        "stepHdr": 10,
+        "pollSec": 3,
+        "hdrMin": 80,
+        "hdrMax": 480
+      },
+      "Controllers": ["Keypad", "Information", "Knob"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "Tooltip": "Яркость монитора / яркость SDR-контента в HDR (крутилка Knob)",
+      "UUID": "com.mirabox.streamdock.lastomega.brightness",
+      "PropertyInspectorPath": "propertyInspector/brightness/index.html"
+    },
+    {
+      "Icon": "static/CH.png",
+      "Name": "Crosshair",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        },
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        }
+      ],
+      "Settings": {
+        "mode": "toggle",
+        "style": 1,
+        "nameFilter": "MO32U2"
+      },
+      "Controllers": ["Keypad", "Information"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "Tooltip": "Включение / выключение прицела (OSD Sidekick HID) для Gigabyte MO32U2",
+      "UUID": "com.mirabox.streamdock.lastomega.crosshair",
+      "PropertyInspectorPath": "propertyInspector/crosshair/index.html"
+    },
+    {
+      "Icon": "static/CH.png",
+      "Name": "Picture Mode",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        },
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        }
+      ],
+      "Settings": {
+        "nameFilter": "MO32U2",
+        "pollSec": 5
+      },
+      "Controllers": ["Keypad", "Information", "Knob"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "Tooltip": "Профили Графика (Picture Mode) SDR/HDR для Gigabyte MO32U2",
+      "UUID": "com.mirabox.streamdock.lastomega.pictureMode",
+      "PropertyInspectorPath": "propertyInspector/pictureMode/index.html"
+    }
+  ],
+  "SDKVersion": 1,
+  "Author": "Rustam",
+  "Name": "Last Omega",
+  "Icon": "static/CH.png",
+  "CodePath": "plugin/index.js",
+  "CodePathWin": "plugin/index.js",
+  "Description": "MiraBox N4 Pro × Gigabyte MO32U2 — HDR, brightness, crosshair & picture mode (Windows 11)",
+  "Category": "Last Omega",
+  "CategoryIcon": "static/CH.png",
+  "Version": "0.5.5",
+  "URL": "https://github.com/r4444h/last-omega-mo32u2",
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Software": {
+    "MinimumVersion": "3.10.188.226"
+  },
+  "Nodejs": {
+    "Version": "20"
+  }
+}

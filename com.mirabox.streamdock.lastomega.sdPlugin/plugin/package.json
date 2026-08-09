@@ -1,0 +1,13 @@
+{
+  "name": "lastomega-plugin",
+  "version": "0.5.5",
+  "description": "Stream Dock / MiraBox plugin for Gigabyte MO32U2 (HDR, brightness, crosshair, picture mode)",
+  "main": "index.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

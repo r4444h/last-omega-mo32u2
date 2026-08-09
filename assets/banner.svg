@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="Last Omega">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="55%" stop-color="#132033"/>
+      <stop offset="100%" stop-color="#1A2A28"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5CFFB0"/>
+      <stop offset="100%" stop-color="#4DB8FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1040" cy="160" r="220" fill="#5CFFB0" opacity="0.06"/>
+  <circle cx="180" cy="520" r="180" fill="#4DB8FF" opacity="0.06"/>
+  <text x="80" y="200" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700">Last Omega</text>
+  <text x="80" y="270" fill="#A8B3C4" font-family="Segoe UI, Arial, sans-serif" font-size="28">MiraBox N4 Pro  ·  Gigabyte MO32U2</text>
+  <text x="80" y="360" fill="url(#accent)" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="600">Your monitor. Your knobs. No OSD diving.</text>
+  <text x="80" y="500" fill="#7F8B9C" font-family="Segoe UI, Arial, sans-serif" font-size="22">HDR · Brightness · Crosshair · Picture Mode · Windows 11</text>
+  <text x="80" y="550" fill="#5C6B7A" font-family="Segoe UI, Arial, sans-serif" font-size="18">Gifted to the MiraBox community</text>
+</svg>

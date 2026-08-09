@@ -1,0 +1,17 @@
+---
+name: Feature request
+description: Ideas for Last Omega / other Gigabyte panels
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should we add?
+      description: Monitor model, action type (key/knob), and why it helps.
+    validations:
+      required: true
+  - type: input
+    id: monitor
+    attributes:
+      label: Monitor model
+      placeholder: MO32U2 / other

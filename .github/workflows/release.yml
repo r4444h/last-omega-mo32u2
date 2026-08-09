@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override (optional, else read from manifest.json)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pack plugin zip
+        shell: pwsh
+        run: |
+          .\scripts\pack.ps1
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $m = Get-Content .\com.mirabox.streamdock.lastomega.sdPlugin\manifest.json -Raw | ConvertFrom-Json
+          $v = $m.Version
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+          echo "tag=v$v" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LastOmega-${{ steps.ver.outputs.version }}-windows
+          path: |
+            dist/LastOmega-*-windows.zip
+            dist/LastOmega-*-windows.streamDockPlugin
+            dist/LastOmega-*-windows.sha256
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/LastOmega-*-windows.zip
+            dist/LastOmega-*-windows.streamDockPlugin
+            dist/LastOmega-*-windows.sha256
+          body: |
+            ## Last Omega ${{ steps.ver.outputs.version }}
+
+            **Your MO32U2. Your knobs. No OSD diving.**
+
+            ### Install (Windows 11)
+            1. Quit Stream Dock
+            2. Download `LastOmega-${{ steps.ver.outputs.version }}-windows.zip`
+            3. Unpack `com.mirabox.streamdock.lastomega.sdPlugin` into `%APPDATA%\HotSpot\StreamDock\plugins\`
+            4. Start Stream Dock → category **Last Omega**
+
+            Requires **Windows 11**, Stream Dock ≥ 3.10.188.226, Node 20 (bundled), Gigabyte MO32U2.
+
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

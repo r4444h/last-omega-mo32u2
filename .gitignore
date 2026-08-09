@@ -1,0 +1,36 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs & local runtime state (never ship)
+*.log
+**/log/
+**/lastomega-debug.log
+**/ui-state-cache.json
+**/picture-mode-state.json
+**/picture-modes-cache.json
+**/crosshair-state.json
+debug.log
+
+# Build / release output (CI uploads artifacts)
+dist/
+releases/*.zip
+releases/*.streamDockPlugin
+
+# Node (keep package-lock; prefer fresh install in pack)
+# Ship node_modules inside the packed plugin so end users need no npm.
+# Still ignore accidental caches:
+**/node_modules/.cache/
+npm-debug.log*
+yarn-error.log*
+
+# Local secrets / scratch
+.env
+.env.*
+*.tmp
+tools/probes/_out/

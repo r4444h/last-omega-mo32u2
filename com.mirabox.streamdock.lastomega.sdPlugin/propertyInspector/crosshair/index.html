@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Last Omega — Crosshair</title>
+  <link rel="stylesheet" href="../../static/css/sdpi.css" />
+</head>
+<body>
+  <div class="sdpi-wrapper" style="display: none;">
+    <div type="select" class="sdpi-item">
+      <div class="sdpi-item-label">Mode</div>
+      <select class="sdpi-item-value select" id="mode">
+        <option value="toggle">Toggle</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+    </div>
+
+    <div type="select" class="sdpi-item">
+      <div class="sdpi-item-label">Style</div>
+      <select class="sdpi-item-value select" id="style">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4 (user)</option>
+      </select>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Status</div>
+      <div class="sdpi-item-value" id="statusText">—</div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Actions</div>
+      <button class="sdpi-item-value" id="btnRefresh">Refresh</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnOn">Aim On</button>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label"></div>
+      <button class="sdpi-item-value" id="btnOff">Aim Off</button>
+    </div>
+  </div>
+
+  <script src="../utils/common.js"></script>
+  <script src="../utils/action.js"></script>
+  <script src="./index.js"></script>
+</body>
+</html>

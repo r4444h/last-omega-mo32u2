@@ -1,0 +1,46 @@
+---
+name: Bug report
+description: Something broken on MO32U2 / Stream Dock
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping the MiraBox community. Please fill what you can.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: "0.5.5"
+    validations:
+      required: true
+  - type: input
+    id: streamdock
+    attributes:
+      label: Stream Dock version
+      placeholder: "3.10.188.226"
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Windows 11
+        - Windows 10 (unsupported)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log (optional)
+      description: Attach `plugin/lastomega-debug.log` if you enabled debug logging.
