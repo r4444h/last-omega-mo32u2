@@ -8,7 +8,7 @@
   <strong>Your MO32U2. Your knobs. No OSD diving.</strong><br/>
   A Stream Dock plugin for <strong>MiraBox N4 Pro</strong>, purpose-built for the
   <strong>Gigabyte MO32U2</strong> monitor —
-  HDR, brightness, crosshair and picture modes without digging through the OSD.
+  HDR, brightness, crosshair, picture modes and refresh rate without digging through the OSD.
 </p>
 
 <p align="center">
@@ -24,11 +24,10 @@
   <img alt="Runtime" src="https://img.shields.io/badge/Node.js-20-brightgreen"/>
   <img alt="Device" src="https://img.shields.io/badge/Device-MiraBox%20N4%20Pro-blueviolet"/>
   <img alt="Monitor" src="https://img.shields.io/badge/Monitor-Gigabyte%20MO32U2-informational"/>
-  <img alt="Version" src="https://img.shields.io/badge/plugin-v0.5.4-orange"/>
+  <img alt="Version" src="https://img.shields.io/badge/plugin-v0.5.5-orange"/>
 </p>
 
 > Built and validated on **MiraBox N4 Pro** + **Gigabyte MO32U2**.  
-> Gifted to the **MiraBox / Stream Dock** community.  
 > Languages: **[English](README.md)** · **[Русский](docs/README.ru.md)** · **[中文](docs/README.zh-CN.md)**
 
 **Credits:** directed & product owner — **R4444H**; implementation — **Cursor (AI coding assistant)**.  
@@ -49,6 +48,7 @@ The **MiraBox N4 Pro** (Stream Dock) has real knobs and keys sitting on your des
 | **Brightness** | SDR `%` or HDR SDR-content **nits** — one knob, correct unit |
 | **Crosshair** | On-panel AIM via Gigabyte Sidekick HID |
 | **Picture Mode** | Cycle **Graphics** profiles (STD / FPS / MOBA / …) with preview-then-apply |
+| **Refresh Rate** | Show current panel Hz on a Key (`240Hz`), configurable poll interval |
 
 Keep your aim, keep your hands on the dials, keep the monitor menu closed.
 
@@ -83,7 +83,7 @@ Keep your aim, keep your hands on the dials, keep the monitor menu closed.
 | Piece | Model | Role |
 |-------|--------|------|
 | Controller | **MiraBox N4 Pro** | Keys + Knobs (Brightness & Picture Mode shine on dials) |
-| Display | **Gigabyte MO32U2** | HDR, DDC brightness, Sidekick HID crosshair & Graphics modes |
+| Display | **Gigabyte MO32U2** | HDR, DDC brightness, Sidekick HID crosshair & Graphics modes, refresh rate |
 
 ---
 
@@ -109,7 +109,7 @@ See also the full guide: **[docs/INSTALL.md](docs/INSTALL.md)** ([RU](docs/INSTA
 Or from PowerShell (after downloading the zip):
 
 ```powershell
-Expand-Archive .\LastOmega-0.5.4-windows.zip -DestinationPath "$env:TEMP\lastomega"
+Expand-Archive .\LastOmega-0.5.5-windows.zip -DestinationPath "$env:TEMP\lastomega"
 Copy-Item "$env:TEMP\lastomega\com.mirabox.streamdock.lastomega.sdPlugin" `
   "$env:APPDATA\HotSpot\StreamDock\plugins\" -Recurse -Force
 ```
@@ -118,7 +118,7 @@ Copy-Item "$env:TEMP\lastomega\com.mirabox.streamdock.lastomega.sdPlugin" `
 
 ```powershell
 # From a cloned repo, after you placed the zip under dist\
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
 ```
 
 ### Option C — Build from source
@@ -150,6 +150,7 @@ cd ..\..\..
 | HDR | Windows DisplayConfig (PowerShell) |
 | Brightness | DDC/CI + HDR SDR white-level APIs |
 | Crosshair / Picture | Gigabyte OSD Sidekick USB HID (`VID_0BDA&PID_1100`) |
+| Refresh Rate | DisplayConfig path refresh (Hz), snapped to common panel rates |
 | UI | Transparent keys + dial titles; Property Inspectors (HTML) |
 
 ---
@@ -167,7 +168,7 @@ last-omega/
 ├── tools/probes/              # Hardware experiments (not shipped)
 ├── .github/workflows/         # Release packaging CI
 └── com.mirabox.streamdock.lastomega.sdPlugin/
-    ├── manifest.json          # v0.5.4 · Node 20
+    ├── manifest.json          # v0.5.5 · Node 20
     ├── en.json / ru.json / zh_CN.json
     ├── plugin/                # index.js + *.ps1 helpers + ws
     ├── propertyInspector/     # Per-action settings

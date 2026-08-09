@@ -3,7 +3,7 @@
 <p align="center"><strong>专为 Gigabyte MO32U2 — 旋钮直达，告别 OSD。</strong></p>
 
 面向 **MiraBox N4 Pro**（Stream Dock）的插件，专为 **Gigabyte MO32U2** 显示器打造：
-HDR、亮度、准星与图像模式，无需再钻进屏幕菜单。
+HDR、亮度、准星、图像模式与刷新率，无需再钻进屏幕菜单。
 
 实测组合：**MiraBox N4 Pro** + **Gigabyte MO32U2**。
 
@@ -19,6 +19,7 @@ HDR、亮度、准星与图像模式，无需再钻进屏幕菜单。
 | **亮度** | SDR 用 `%`，HDR 下 SDR 内容用 **nits**；同一旋钮 |
 | **准星** | 通过 Sidekick HID 控制面板准星 |
 | **图像模式** | 转动预览，停转后写入 Graphics / Picture Mode |
+| **刷新率** | 在按键上显示当前 Hz（如 `240Hz`），轮询间隔可配置 |
 
 ## 截图
 
@@ -42,7 +43,7 @@ HDR、亮度、准星与图像模式，无需再钻进屏幕菜单。
 | 部件 | 型号 |
 |------|------|
 | 控制器 | **MiraBox N4 Pro** — 按键与旋钮 |
-| 显示器 | **Gigabyte MO32U2** — HDR、亮度、准星、图像模式 |
+| 显示器 | **Gigabyte MO32U2** — HDR、亮度、准星、图像模式、刷新率 |
 
 ## 安装成品包
 
@@ -59,7 +60,7 @@ HDR、亮度、准星与图像模式，无需再钻进屏幕菜单。
 4. 启动 Stream Dock → 分类 **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
 ```
 
 ## 从源码构建
@@ -78,6 +79,7 @@ cd ..\..\..
 - HDR — Windows DisplayConfig
 - 亮度 — DDC/CI + HDR 下 SDR 白电平 API
 - 准星 / 图像模式 — Sidekick USB HID（`VID_0BDA&PID_1100`）
+- 刷新率 — DisplayConfig Hz，对齐常见面板刷新率
 
 ## 许可
 

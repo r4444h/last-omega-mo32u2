@@ -1,6 +1,6 @@
 {
   "Name": "Last Omega",
-  "Description": "Gigabyte MO32U2 HDR、亮度、准星与图像模式",
+  "Description": "Gigabyte MO32U2 HDR、亮度、准星、图像模式与刷新率",
   "com.mirabox.streamdock.lastomega.hdr": {
     "Name": "HDR",
     "Tooltip": "切换 Gigabyte MO32U2 的 HDR"
@@ -16,6 +16,10 @@
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "图像模式",
     "Tooltip": "切换 SDR/HDR 图像模式配置"
+  },
+  "com.mirabox.streamdock.lastomega.refreshRate": {
+    "Name": "刷新率",
+    "Tooltip": "显示当前屏幕刷新率（Hz）"
   },
   "Category": "Last Omega"
 }

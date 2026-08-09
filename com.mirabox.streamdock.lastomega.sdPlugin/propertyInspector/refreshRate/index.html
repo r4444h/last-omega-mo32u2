@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Last Omega — Refresh Rate</title>
+  <link rel="stylesheet" href="../../static/css/sdpi.css" />
+</head>
+<body>
+  <div class="sdpi-wrapper" style="display: none;">
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Display</div>
+      <select class="sdpi-item-value select" id="nameFilter">
+        <option value="MO32U2">MO32U2</option>
+      </select>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Опрос (сек)</div>
+      <input
+        class="sdpi-item-value"
+        id="pollSec"
+        type="number"
+        min="5"
+        max="3600"
+        step="1"
+        value="60"
+        list="pollPresets"
+      />
+      <datalist id="pollPresets">
+        <option value="5"></option>
+        <option value="15"></option>
+        <option value="30"></option>
+        <option value="60"></option>
+        <option value="120"></option>
+        <option value="300"></option>
+      </datalist>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Status</div>
+      <div class="sdpi-item-value" id="statusText">—</div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Actions</div>
+      <button class="sdpi-item-value" id="btnRefresh">Refresh</button>
+    </div>
+  </div>
+
+  <script src="../utils/common.js"></script>
+  <script src="../utils/action.js"></script>
+  <script src="./index.js"></script>
+</body>
+</html>

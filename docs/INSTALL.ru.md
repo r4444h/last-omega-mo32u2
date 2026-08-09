@@ -1,4 +1,4 @@
-﻿# РЈСЃС‚Р°РЅРѕРІРєР°
+# РЈСЃС‚Р°РЅРѕРІРєР°
 
 **РЇР·С‹РєРё:** [English](INSTALL.md) В· [Р СѓСЃСЃРєРёР№](INSTALL.ru.md) В· [дё­ж–‡](INSTALL.zh-CN.md)
 
@@ -16,7 +16,7 @@
 5. Р—Р°РїСѓСЃС‚РёС‚Рµ Stream Dock в†’ РєР°С‚РµРіРѕСЂРёСЏ **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
 ```
 
 ## РўСЂРµР±РѕРІР°РЅРёСЏ

@@ -9,5 +9,5 @@ Packaged installers are produced by `scripts/pack.ps1` and published on
 
 ```powershell
 .\scripts\pack.ps1
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
 ```

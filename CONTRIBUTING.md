@@ -29,7 +29,7 @@ cd ..\..\..
 
 ```powershell
 .\scripts\pack.ps1
-# → dist\LastOmega-0.5.4-windows.zip
+# → dist\LastOmega-0.5.5-windows.zip
 ```
 
 ## Pull requests

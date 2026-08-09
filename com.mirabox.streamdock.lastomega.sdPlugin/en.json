@@ -1,6 +1,6 @@
 {
   "Name": "Last Omega",
-  "Description": "HDR, brightness, crosshair and picture mode for Gigabyte MO32U2",
+  "Description": "HDR, brightness, crosshair, picture mode and refresh rate for Gigabyte MO32U2",
   "com.mirabox.streamdock.lastomega.hdr": {
     "Name": "HDR Toggle",
     "Tooltip": "Toggle HDR for Gigabyte MO32U2"
@@ -16,6 +16,10 @@
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Picture Mode",
     "Tooltip": "Cycle Graphics / Picture Mode profiles (SDR/HDR)"
+  },
+  "com.mirabox.streamdock.lastomega.refreshRate": {
+    "Name": "Refresh Rate",
+    "Tooltip": "Show current display refresh rate (Hz)"
   },
   "Category": "Last Omega"
 }

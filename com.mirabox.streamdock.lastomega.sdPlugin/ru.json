@@ -1,6 +1,6 @@
 {
   "Name": "Last Omega",
-  "Description": "HDR, яркость, прицел и профили Графика для Gigabyte MO32U2",
+  "Description": "HDR, яркость, прицел, Графика и герцовка для Gigabyte MO32U2",
   "com.mirabox.streamdock.lastomega.hdr": {
     "Name": "HDR",
     "Tooltip": "Вкл/выкл HDR для Gigabyte MO32U2"
@@ -16,6 +16,10 @@
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Графика",
     "Tooltip": "Переключение профилей Графика (SDR/HDR)"
+  },
+  "com.mirabox.streamdock.lastomega.refreshRate": {
+    "Name": "Герцовка",
+    "Tooltip": "Текущая частота обновления экрана (Hz)"
   },
   "Category": "Last Omega"
 }

@@ -1,4 +1,4 @@
-﻿# Install guide
+# Install guide
 
 Step-by-step install for the MiraBox / Stream Dock community package.
 
@@ -38,7 +38,7 @@ C:\Users\<You>\AppData\Roaming\HotSpot\StreamDock\plugins\com.mirabox.streamdock
 From a clone of this repo:
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
 ```
 
 ## Requirements checklist

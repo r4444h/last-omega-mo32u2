@@ -1,7 +1,7 @@
 {
   "Actions": [
     {
-      "Icon": "static/CH.png",
+      "Icon": "static/icon.png",
       "Name": "HDR Toggle",
       "DisableAutomaticStates": true,
       "States": [
@@ -30,7 +30,7 @@
       "PropertyInspectorPath": "propertyInspector/hdr/index.html"
     },
     {
-      "Icon": "static/CH.png",
+      "Icon": "static/icon.png",
       "Name": "Brightness",
       "DisableAutomaticStates": true,
       "States": [
@@ -63,7 +63,7 @@
       "PropertyInspectorPath": "propertyInspector/brightness/index.html"
     },
     {
-      "Icon": "static/CH.png",
+      "Icon": "static/icon.png",
       "Name": "Crosshair",
       "DisableAutomaticStates": true,
       "States": [
@@ -93,7 +93,7 @@
       "PropertyInspectorPath": "propertyInspector/crosshair/index.html"
     },
     {
-      "Icon": "static/CH.png",
+      "Icon": "static/icon.png",
       "Name": "Picture Mode",
       "DisableAutomaticStates": true,
       "States": [
@@ -120,18 +120,41 @@
       "Tooltip": "Профили Графика (Picture Mode) SDR/HDR для Gigabyte MO32U2",
       "UUID": "com.mirabox.streamdock.lastomega.pictureMode",
       "PropertyInspectorPath": "propertyInspector/pictureMode/index.html"
+    },
+    {
+      "Icon": "static/icon.png",
+      "Name": "Refresh Rate",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/transparent.png",
+          "TitleAlignment": "middle",
+          "FontSize": "12",
+          "Title": ""
+        }
+      ],
+      "Settings": {
+        "nameFilter": "MO32U2",
+        "pollSec": 60
+      },
+      "Controllers": ["Keypad", "Information"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": true,
+      "Tooltip": "Частота обновления экрана (Hz) для Gigabyte MO32U2",
+      "UUID": "com.mirabox.streamdock.lastomega.refreshRate",
+      "PropertyInspectorPath": "propertyInspector/refreshRate/index.html"
     }
   ],
   "SDKVersion": 1,
   "Author": "R4444H",
   "Name": "Last Omega",
-  "Icon": "static/CH.png",
+  "Icon": "static/icon.png",
   "CodePath": "plugin/index.js",
   "CodePathWin": "plugin/index.js",
-  "Description": "HDR, brightness, crosshair and picture mode for Gigabyte MO32U2",
+  "Description": "HDR, brightness, crosshair, picture mode and refresh rate for Gigabyte MO32U2",
   "Category": "Last Omega",
-  "CategoryIcon": "static/CH.png",
-  "Version": "0.5.4",
+  "CategoryIcon": "static/icon.png",
+  "Version": "0.5.5",
   "URL": "https://sdk.key123.vip/",
   "OS": [
     {

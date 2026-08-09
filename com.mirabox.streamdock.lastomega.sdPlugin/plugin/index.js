@@ -8,6 +8,7 @@ const HDR_SCRIPT = path.join(__dirname, 'HdrControl.ps1');
 const BRIGHTNESS_SCRIPT = path.join(__dirname, 'BrightnessControl.ps1');
 const CROSSHAIR_SCRIPT = path.join(__dirname, 'CrosshairControl.ps1');
 const PICTURE_SCRIPT = path.join(__dirname, 'PictureModeControl.ps1');
+const REFRESH_SCRIPT = path.join(__dirname, 'RefreshRateControl.ps1');
 const STATE_CACHE_FILE = path.join(__dirname, 'ui-state-cache.json');
 const DEFAULT_FILTER = 'MO32U2';
 const timers = {};
@@ -15,12 +16,14 @@ const brightnessByFilter = {}; // shared live state per monitor filter
 const hdrByFilter = {}; // shared HDR on/off cache per monitor filter
 const crosshairByFilter = {}; // shared crosshair on/off cache
 const pictureByFilter = {}; // shared picture-mode state per monitor
+const refreshRateByFilter = {}; // shared Hz cache per monitor
 const controllerByContext = {}; // Keypad | Knob | Encoder
 const lastVisualByContext = {}; // skip redundant setImage/setTitle (scene flicker)
 const BRIGHTNESS_COMMIT_MS = 280;
 // Browse freely; apply only after the dial stops. Ignore dial only while set runs.
 const PICTURE_COMMIT_MS = 850;
 const PICTURE_HOLD_MS = 0;
+const REFRESH_RATE_POLL_DEFAULT = 60; // rare — Hz rarely changes
 const SDR_MIN = 0;
 const SDR_MAX = 100;
 const HDR_MIN_DEFAULT = 80;
@@ -34,10 +37,12 @@ function readStateCacheFile() {
       brightness: raw.brightness && typeof raw.brightness === 'object' ? raw.brightness : {},
       hdr: raw.hdr && typeof raw.hdr === 'object' ? raw.hdr : {},
       crosshair: raw.crosshair && typeof raw.crosshair === 'object' ? raw.crosshair : {},
-      picture: raw.picture && typeof raw.picture === 'object' ? raw.picture : {}
+      picture: raw.picture && typeof raw.picture === 'object' ? raw.picture : {},
+      refreshRate:
+        raw.refreshRate && typeof raw.refreshRate === 'object' ? raw.refreshRate : {}
     };
   } catch (_) {
-    return { brightness: {}, hdr: {}, crosshair: {}, picture: {} };
+    return { brightness: {}, hdr: {}, crosshair: {}, picture: {}, refreshRate: {} };
   }
 }
 
@@ -84,8 +89,25 @@ function writeStateCacheFile() {
       };
     }
 
+    const refreshRate = {};
+    for (const [filter, state] of Object.entries(refreshRateByFilter)) {
+      if (!state || !Number.isFinite(state.hzRounded)) continue;
+      refreshRate[filter] = {
+        hz: state.hz,
+        hzRounded: state.hzRounded,
+        label: state.label || `${state.hzRounded}Hz`
+      };
+    }
+
     // Fixed-size overwrite only (no append / history).
-    const payload = JSON.stringify({ brightness, hdr, crosshair, picture, updatedAt: Date.now() });
+    const payload = JSON.stringify({
+      brightness,
+      hdr,
+      crosshair,
+      picture,
+      refreshRate,
+      updatedAt: Date.now()
+    });
     if (payload.length > 8192) {
       log.error('ui-state-cache too large, skip write', payload.length);
       return;
@@ -148,6 +170,16 @@ function hydrateStateCache() {
       lastSentValue: Number.isFinite(Number(cached.lastSentValue))
         ? Number(cached.lastSentValue)
         : value
+    };
+  }
+  for (const [filter, cached] of Object.entries(disk.refreshRate || {})) {
+    if (refreshRateByFilter[filter]) continue;
+    const hzRounded = Number(cached.hzRounded);
+    if (!Number.isFinite(hzRounded) || hzRounded <= 0) continue;
+    refreshRateByFilter[filter] = {
+      hz: Number(cached.hz) || hzRounded,
+      hzRounded,
+      label: cached.label || `${hzRounded}Hz`
     };
   }
 }
@@ -224,6 +256,10 @@ function runHdr(opts) {
 
 function runBrightness(opts) {
   return runPs(BRIGHTNESS_SCRIPT, opts);
+}
+
+function runRefreshRate(opts) {
+  return runPs(REFRESH_SCRIPT, opts);
 }
 
 function runCrosshair({ action, style }) {
@@ -1760,6 +1796,187 @@ plugin.pictureMode = new Actions({
       plugin.setSettings(context, normalized);
       restartPicturePoll(context);
       refreshPictureMode(context).catch(() => {});
+    }
+  }
+});
+
+function refreshRateSettings(context) {
+  const raw = Object.assign(
+    {
+      nameFilter: DEFAULT_FILTER,
+      pollSec: REFRESH_RATE_POLL_DEFAULT
+    },
+    plugin.refreshRate?.data?.[context] || {}
+  );
+  // Poll interval is user-configurable (seconds). Floor at 5s so it stays light.
+  raw.pollSec = Math.max(5, Math.min(3600, Math.round(Number(raw.pollSec) || REFRESH_RATE_POLL_DEFAULT)));
+  raw.nameFilter = raw.nameFilter || DEFAULT_FILTER;
+  return raw;
+}
+
+function refreshRateFilter(context) {
+  return refreshRateSettings(context).nameFilter || DEFAULT_FILTER;
+}
+
+function rememberRefreshRate(filter, display) {
+  const hzRounded = Number(display?.hzRounded);
+  const hz = Number(display?.hz);
+  if (!Number.isFinite(hzRounded) || hzRounded <= 0) return null;
+  refreshRateByFilter[filter] = {
+    hz: Number.isFinite(hz) ? hz : hzRounded,
+    hzRounded,
+    label: display.label || `${hzRounded}Hz`,
+    width: Number(display.width) || 0,
+    height: Number(display.height) || 0,
+    name: display.name || filter
+  };
+  writeStateCacheFile();
+  return refreshRateByFilter[filter];
+}
+
+function paintRefreshRateFromCache(context) {
+  const filter = refreshRateFilter(context);
+  const state = refreshRateByFilter[filter];
+  if (!state || !Number.isFinite(state.hzRounded)) return false;
+  applyKeyVisual(context, state.label || `${state.hzRounded}Hz`);
+  return true;
+}
+
+function paintRefreshRateEverywhere(filter, state) {
+  const data = plugin.refreshRate?.data || {};
+  for (const context of Object.keys(data)) {
+    if (refreshRateFilter(context) !== filter) continue;
+    applyKeyVisual(context, state.label || `${state.hzRounded}Hz`);
+    plugin.sendToPropertyInspector({
+      type: 'refreshRateStatus',
+      ok: true,
+      display: {
+        name: state.name || filter,
+        hz: state.hz,
+        hzRounded: state.hzRounded,
+        label: state.label,
+        width: state.width,
+        height: state.height
+      },
+      settings: refreshRateSettings(context)
+    });
+  }
+}
+
+function restartRefreshRatePoll(context) {
+  if (timers[context]) {
+    clearInterval(timers[context]);
+    delete timers[context];
+  }
+  const ms = refreshRateSettings(context).pollSec * 1000;
+  timers[context] = setInterval(() => {
+    refreshRefreshRate(context).catch(() => {});
+  }, ms);
+}
+
+async function refreshRefreshRate(context) {
+  const settings = refreshRateSettings(context);
+  const filter = settings.nameFilter || DEFAULT_FILTER;
+  try {
+    const result = await runRefreshRate({
+      action: 'status',
+      nameFilter: filter
+    });
+    if (!result?.ok) throw new Error(result?.error || 'refresh rate status failed');
+    const prev = refreshRateByFilter[filter];
+    const state = rememberRefreshRate(filter, result.display);
+    if (!state) throw new Error('invalid refresh rate');
+    const unchanged =
+      prev &&
+      prev.hzRounded === state.hzRounded &&
+      String(prev.label || '') === String(state.label || '');
+    if (unchanged) paintRefreshRateFromCache(context);
+    else paintRefreshRateEverywhere(filter, state);
+    return result.display;
+  } catch (error) {
+    log.error('refreshRefreshRate', error);
+    if (!paintRefreshRateFromCache(context)) applyKeyVisual(context, 'Hz ERR');
+    plugin.sendToPropertyInspector({
+      type: 'refreshRateStatus',
+      ok: false,
+      error: String(error.message || error),
+      settings
+    });
+    return null;
+  }
+}
+
+plugin.refreshRate = new Actions({
+  default: {
+    nameFilter: DEFAULT_FILTER,
+    pollSec: REFRESH_RATE_POLL_DEFAULT
+  },
+
+  async _willAppear({ context, payload }) {
+    rememberController(context, payload);
+    paintRefreshRateFromCache(context);
+    restartRefreshRatePoll(context);
+    refreshRefreshRate(context).catch(() => {});
+  },
+
+  _willDisappear({ context }) {
+    if (timers[context]) {
+      clearInterval(timers[context]);
+      delete timers[context];
+    }
+    if (lastVisualByContext[context]) lastVisualByContext[context].stale = true;
+  },
+
+  async _didReceiveSettings({ context }) {
+    plugin.refreshRate.data[context] = refreshRateSettings(context);
+    paintRefreshRateFromCache(context);
+    restartRefreshRatePoll(context);
+  },
+
+  async _propertyInspectorDidAppear({ context }) {
+    try {
+      const list = await runRefreshRate({ action: 'list' });
+      plugin.sendToPropertyInspector({
+        type: 'displayList',
+        ok: true,
+        displays: list.displays || [],
+        settings: refreshRateSettings(context)
+      });
+    } catch (error) {
+      plugin.sendToPropertyInspector({
+        type: 'displayList',
+        ok: false,
+        error: String(error.message || error),
+        settings: refreshRateSettings(context)
+      });
+    }
+    await refreshRefreshRate(context);
+  },
+
+  keyUp({ context }) {
+    // Manual refresh on press — no need for frequent polling.
+    refreshRefreshRate(context).catch(() => {});
+  },
+
+  sendToPlugin({ context, payload }) {
+    if (!payload || typeof payload !== 'object') return;
+
+    if (payload.type === 'refresh') {
+      refreshRefreshRate(context).catch(() => {});
+      return;
+    }
+
+    if (payload.type === 'applySettings') {
+      plugin.refreshRate.data[context] = {
+        nameFilter: payload.nameFilter || DEFAULT_FILTER,
+        pollSec: payload.pollSec
+      };
+      const normalized = refreshRateSettings(context);
+      plugin.refreshRate.data[context] = normalized;
+      plugin.setSettings(context, normalized);
+      paintRefreshRateFromCache(context);
+      restartRefreshRatePoll(context);
+      refreshRefreshRate(context).catch(() => {});
     }
   }
 });

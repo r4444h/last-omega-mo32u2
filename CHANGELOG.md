@@ -5,6 +5,18 @@ All notable changes to **Last Omega** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.5] - 2026-08-09
+
+### Added
+- Refresh Rate Key — show current panel Hz (`240Hz`), configurable poll interval
+- Plugin Omega icon (`static/icon.png`) for category and actions
+
+### Fixed
+- Refresh rate rounding snaps to common panel rates (e.g. 239.998 → 240)
+
+### Changed
+- Docs (EN / RU / ZH) include Refresh Rate / Герцовка / 刷新率
+
 ## [0.5.4] - 2026-08-09
 
 ### Added
@@ -29,5 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - HDR toggle via Windows DisplayConfig
 - Brightness Key/Knob (DDC + HDR SDR-content luminance)
 
+[0.5.5]: #v055
 [0.5.4]: #v054
 [0.2.0]: #v020
