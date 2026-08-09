@@ -1,32 +1,32 @@
-# 安装说明
+﻿# е®‰иЈ…иЇґжЋ
 
-**语言：** [English](INSTALL.md) · [Русский](INSTALL.ru.md) · [中文](INSTALL.zh-CN.md)
+**иЇ­иЁЂпјљ** [English](INSTALL.md) В· [Р СѓСЃСЃРєРёР№](INSTALL.ru.md) В· [дё­ж–‡](INSTALL.zh-CN.md)
 
-## 快速安装（仅 Windows 11）
+## еї«йЂџе®‰иЈ…пј€д»… Windows 11пј‰
 
-1. 从 [Releases](../../releases/latest) 下载 **`LastOmega-*-windows.zip`**
-2. 完全退出 **Stream Dock**
-3. 解压得到文件夹 `com.mirabox.streamdock.lastomega.sdPlugin`
-4. 复制到：
+1. д»Ћ [Releases](../../releases/latest) дё‹иЅЅ **`LastOmega-*-windows.zip`**
+2. е®Ње…ЁйЂЂе‡є **Stream Dock**
+3. и§ЈеЋ‹еѕ—е€°ж–‡д»¶е¤№ `com.mirabox.streamdock.lastomega.sdPlugin`
+4. е¤Ќе€¶е€°пјљ
 
 ```text
 %APPDATA%\HotSpot\StreamDock\plugins\
 ```
 
-5. 启动 Stream Dock → 分类 **Last Omega**
+5. еђЇеЉЁ Stream Dock в†’ е€†з±» **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
-## 环境要求
+## зЋЇеўѓи¦Ѓж±‚
 
-- **仅 Windows 11**
-- **MiraBox N4 Pro**（Stream Dock）
-- Stream Dock ≥ **3.10.188.226**
-- 显示器 **Gigabyte MO32U2**
-- Gigabyte Control Center / Sidekick（准星与图像模式）
+- **д»… Windows 11**
+- **MiraBox N4 Pro**пј€Stream Dockпј‰
+- Stream Dock в‰Ґ **3.10.188.226**
+- жѕз¤єе™Ё **Gigabyte MO32U2**
+- Gigabyte Control Center / Sidekickпј€е‡†жџдёЋе›ѕеѓЏжЁЎејЏпј‰
 
-## 卸载
+## еЌёиЅЅ
 
-删除 `%APPDATA%\HotSpot\StreamDock\plugins\` 下的插件文件夹即可。
+е€ й™¤ `%APPDATA%\HotSpot\StreamDock\plugins\` дё‹зљ„жЏ’д»¶ж–‡д»¶е¤№еЌіеЏЇгЂ‚

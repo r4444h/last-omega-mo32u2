@@ -53,36 +53,31 @@ if (-not (Test-Path $PluginsDir)) {
 }
 
 function Stop-StreamDock {
-  $procs = @(
-    Get-Process -Name "StreamDock" -ErrorAction SilentlyContinue
-    Get-Process -Name "node20" -ErrorAction SilentlyContinue
-  )
+  $procs = Get-Process -Name "StreamDock" -ErrorAction SilentlyContinue
   if (-not $procs) {
     Write-Host "Stream Dock is not running."
     return
   }
 
-  Write-Host "Stopping Stream Dock / node20 (PID: $($procs.Id -join ', '))..."
+  Write-Host "Stopping Stream Dock (PID: $($procs.Id -join ', '))..."
   foreach ($p in $procs) {
     try {
-      if ($p.ProcessName -eq "StreamDock") {
-        $p.CloseMainWindow() | Out-Null
-      }
+      $p.CloseMainWindow() | Out-Null
     } catch {}
   }
 
   $deadline = (Get-Date).AddSeconds(8)
   while ((Get-Date) -lt $deadline) {
-    $alive = Get-Process -Name "StreamDock", "node20" -ErrorAction SilentlyContinue
+    $alive = Get-Process -Name "StreamDock" -ErrorAction SilentlyContinue
     if (-not $alive) { break }
     Start-Sleep -Milliseconds 250
   }
 
-  $still = Get-Process -Name "StreamDock", "node20" -ErrorAction SilentlyContinue
+  $still = Get-Process -Name "StreamDock" -ErrorAction SilentlyContinue
   if ($still) {
-    Write-Host "Force-stopping leftover processes..."
+    Write-Host "Force-stopping Stream Dock..."
     $still | Stop-Process -Force
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 500
   }
 }
 

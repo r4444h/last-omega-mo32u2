@@ -10,7 +10,7 @@ Thank you for helping the MiraBox / Stream Dock community.
 - Do not commit runtime caches (`*-state.json`, `ui-state-cache.json`, `*.log`)
 - Project is **MIT** — forks and modifications are welcome
 
-This repository was directed by **Rustam** and implemented with **Cursor AI** under his guidance.
+This repository was directed by **R4444H** and implemented with **Cursor AI** under his guidance.
 
 ## Development setup
 
@@ -29,7 +29,7 @@ cd ..\..\..
 
 ```powershell
 .\scripts\pack.ps1
-# → dist\LastOmega-0.5.5-windows.zip
+# → dist\LastOmega-0.5.4-windows.zip
 ```
 
 ## Pull requests

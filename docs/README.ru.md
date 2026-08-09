@@ -20,10 +20,13 @@ HDR, яркость, прицел и профили «Графика» — бе�
 | **Прицел** | AIM на панели через Sidekick HID |
 | **Графика** | Профили Picture Mode с превью при вращении и установкой после паузы |
 
-## Галерея / видео
+## Галерея
 
-Скрины клади в `assets/screenshots/` (имена и подписи — в [`../assets/screenshots/CAPTIONS.md`](../assets/screenshots/CAPTIONS.md)).  
-Вставку в README и блок под YouTube/Bilibili смотри в английской секции **Gallery** в [`../README.md`](../README.md).
+<p align="center">
+  <img src="../assets/screenshots/01-streamdock-keys.png" alt="Клавиши Last Omega" width="32%"/>
+  <img src="../assets/screenshots/02-streamdock-knobs.png" alt="Крутилки Last Omega" width="32%"/>
+  <img src="../assets/screenshots/03-streamdock-hdr.png" alt="Настройки HDR" width="32%"/>
+</p>
 
 ## Требования
 
@@ -43,6 +46,8 @@ HDR, яркость, прицел и профили «Графика» — бе�
 
 ## Установка из готового пакета
 
+Полная инструкция: **[INSTALL.ru.md](INSTALL.ru.md)** ([EN](INSTALL.md) · [中文](INSTALL.zh-CN.md))
+
 1. Скачайте `LastOmega-<версия>-windows.zip` из [Releases](../../releases/latest)
 2. Закройте Stream Dock
 3. Распакуйте папку `com.mirabox.streamdock.lastomega.sdPlugin` в:
@@ -54,7 +59,7 @@ HDR, яркость, прицел и профили «Графика» — бе�
 4. Запустите Stream Dock → категория **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
 ## Сборка из исходников
@@ -74,14 +79,6 @@ cd ..\..\..
 - Яркость — DDC/CI + API яркости SDR в HDR
 - Прицел / Графика — USB HID Sidekick (`VID_0BDA&PID_1100`)
 
-## Маркетинговые строки для скринов
-
-> **MO32U2 под рукой — крутилки, не меню OSD.**  
-> Одна крутилка яркости: `%` в SDR и `nits` в HDR.  
-> Крутишь профили — превью сразу, запись после паузы.
-
-Полный набор EN/RU/ZH: [`../assets/screenshots/CAPTIONS.md`](../assets/screenshots/CAPTIONS.md)
-
 ## Лицензия
 
 [MIT](../LICENSE) — **бесплатно для всех**: можно скачивать, использовать, менять и распространять как угодно (в т.ч. свои форки), достаточно сохранить уведомление об авторских правах.
@@ -90,7 +87,7 @@ cd ..\..\..
 
 | Роль | Кто |
 |------|-----|
-| Руководство, решения, тесты на **N4 Pro + MO32U2** | **Rustam** |
-| Реализация (код, документация, пакеты) | **Cursor AI** (Grok) под руководством Rustam |
+| Руководство, решения, тесты на **N4 Pro + MO32U2** | **R4444H** |
+| Реализация (код, документация, пакеты) | **Cursor AI** под руководством R4444H |
 
-В дар сообществу MiraBox.
+Распространяется по лицензии **[MIT](../LICENSE)** — можно свободно использовать, копировать, изменять, объединять, публиковать, распространять, сублицензировать и/или продавать копии этого ПО.

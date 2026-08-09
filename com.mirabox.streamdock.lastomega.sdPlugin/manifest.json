@@ -123,16 +123,16 @@
     }
   ],
   "SDKVersion": 1,
-  "Author": "Rustam",
+  "Author": "R4444H",
   "Name": "Last Omega",
   "Icon": "static/CH.png",
   "CodePath": "plugin/index.js",
   "CodePathWin": "plugin/index.js",
-  "Description": "MiraBox N4 Pro × Gigabyte MO32U2 — HDR, brightness, crosshair & picture mode (Windows 11)",
+  "Description": "HDR, brightness, crosshair and picture mode for Gigabyte MO32U2",
   "Category": "Last Omega",
   "CategoryIcon": "static/CH.png",
-  "Version": "0.5.5",
-  "URL": "https://github.com/r4444h/last-omega-mo32u2",
+  "Version": "0.5.4",
+  "URL": "https://sdk.key123.vip/",
   "OS": [
     {
       "Platform": "windows",

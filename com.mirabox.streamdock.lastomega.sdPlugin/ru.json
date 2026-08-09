@@ -1,21 +1,21 @@
 {
   "Name": "Last Omega",
-  "Description": "MiraBox N4 Pro × Gigabyte MO32U2 — крутилки, не меню. HDR, яркость, прицел и «Графика»",
+  "Description": "HDR, яркость, прицел и профили Графика для Gigabyte MO32U2",
   "com.mirabox.streamdock.lastomega.hdr": {
     "Name": "HDR",
-    "Tooltip": "Вкл/выкл Windows HDR для Gigabyte MO32U2"
+    "Tooltip": "Вкл/выкл HDR для Gigabyte MO32U2"
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Яркость",
-    "Tooltip": "Крутилка яркости — % в SDR или nits в HDR (SDR-контент)"
+    "Tooltip": "Яркость монитора / яркость SDR-контента в HDR"
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Прицел",
-    "Tooltip": "Прицел на панели (OSD Sidekick HID)"
+    "Tooltip": "Вкл/выкл прицел монитора через OSD Sidekick HID"
   },
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Графика",
-    "Tooltip": "Профили Графика — превью при вращении, установка после паузы"
+    "Tooltip": "Переключение профилей Графика (SDR/HDR)"
   },
   "Category": "Last Omega"
 }

@@ -1,32 +1,32 @@
-# Установка
+﻿# РЈСЃС‚Р°РЅРѕРІРєР°
 
-**Языки:** [English](INSTALL.md) · [Русский](INSTALL.ru.md) · [中文](INSTALL.zh-CN.md)
+**РЇР·С‹РєРё:** [English](INSTALL.md) В· [Р СѓСЃСЃРєРёР№](INSTALL.ru.md) В· [дё­ж–‡](INSTALL.zh-CN.md)
 
-## Быстрая установка (Windows 11)
+## Р‘С‹СЃС‚СЂР°СЏ СѓСЃС‚Р°РЅРѕРІРєР° (Windows 11)
 
-1. Скачайте **`LastOmega-*-windows.zip`** из [Releases](../../releases/latest)
-2. Полностью закройте **Stream Dock**
-3. Распакуйте папку `com.mirabox.streamdock.lastomega.sdPlugin`
-4. Скопируйте её в:
+1. РЎРєР°С‡Р°Р№С‚Рµ **`LastOmega-*-windows.zip`** РёР· [Releases](../../releases/latest)
+2. РџРѕР»РЅРѕСЃС‚СЊСЋ Р·Р°РєСЂРѕР№С‚Рµ **Stream Dock**
+3. Р Р°СЃРїР°РєСѓР№С‚Рµ РїР°РїРєСѓ `com.mirabox.streamdock.lastomega.sdPlugin`
+4. РЎРєРѕРїРёСЂСѓР№С‚Рµ РµС‘ РІ:
 
 ```text
 %APPDATA%\HotSpot\StreamDock\plugins\
 ```
 
-5. Запустите Stream Dock → категория **Last Omega**
+5. Р—Р°РїСѓСЃС‚РёС‚Рµ Stream Dock в†’ РєР°С‚РµРіРѕСЂРёСЏ **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
-## Требования
+## РўСЂРµР±РѕРІР°РЅРёСЏ
 
-- Только **Windows 11**
+- РўРѕР»СЊРєРѕ **Windows 11**
 - **MiraBox N4 Pro** (Stream Dock)
-- Stream Dock ≥ **3.10.188.226**
-- Монитор **Gigabyte MO32U2**
-- Gigabyte Control Center / Sidekick (прицел и «Графика»)
+- Stream Dock в‰Ґ **3.10.188.226**
+- РњРѕРЅРёС‚РѕСЂ **Gigabyte MO32U2**
+- Gigabyte Control Center / Sidekick (РїСЂРёС†РµР» Рё В«Р“СЂР°С„РёРєР°В»)
 
-## Удаление
+## РЈРґР°Р»РµРЅРёРµ
 
-Удалите папку плагина из `%APPDATA%\HotSpot\StreamDock\plugins\`.
+РЈРґР°Р»РёС‚Рµ РїР°РїРєСѓ РїР»Р°РіРёРЅР° РёР· `%APPDATA%\HotSpot\StreamDock\plugins\`.

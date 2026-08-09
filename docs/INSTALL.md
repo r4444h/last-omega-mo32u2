@@ -1,8 +1,8 @@
-# Install guide
+﻿# Install guide
 
 Step-by-step install for the MiraBox / Stream Dock community package.
 
-**Languages:** [English](INSTALL.md) · [Русский](INSTALL.ru.md) · [中文](INSTALL.zh-CN.md)
+**Languages:** [English](INSTALL.md) В· [Р СѓСЃСЃРєРёР№](INSTALL.ru.md) В· [дё­ж–‡](INSTALL.zh-CN.md)
 
 ## Quick install (Windows 11)
 
@@ -30,7 +30,7 @@ Full path example:
 C:\Users\<You>\AppData\Roaming\HotSpot\StreamDock\plugins\com.mirabox.streamdock.lastomega.sdPlugin
 ```
 
-5. Start Stream Dock → open category **Last Omega**
+5. Start Stream Dock в†’ open category **Last Omega**
 6. Drop actions on Keys / Knobs (Brightness & Picture Mode love the dials)
 
 ## PowerShell helper
@@ -38,14 +38,14 @@ C:\Users\<You>\AppData\Roaming\HotSpot\StreamDock\plugins\com.mirabox.streamdock
 From a clone of this repo:
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
 ## Requirements checklist
 
 - [ ] Windows **11**
 - [ ] **MiraBox N4 Pro** (Stream Dock)
-- [ ] Stream Dock app ≥ **3.10.188.226**
+- [ ] Stream Dock app в‰Ґ **3.10.188.226**
 - [ ] Gigabyte **MO32U2**
 - [ ] Gigabyte Control Center / Sidekick (for crosshair & picture mode)
 

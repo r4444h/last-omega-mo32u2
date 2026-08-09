@@ -1,21 +1,21 @@
 {
   "Name": "Last Omega",
-  "Description": "MiraBox N4 Pro × Gigabyte MO32U2 — Your knobs. No OSD diving. HDR, brightness, crosshair & picture mode",
+  "Description": "HDR, brightness, crosshair and picture mode for Gigabyte MO32U2",
   "com.mirabox.streamdock.lastomega.hdr": {
     "Name": "HDR Toggle",
-    "Tooltip": "Toggle Windows HDR for Gigabyte MO32U2"
+    "Tooltip": "Toggle HDR for Gigabyte MO32U2"
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Brightness",
-    "Tooltip": "Dial brightness — SDR % or HDR nits (SDR content)"
+    "Tooltip": "Monitor brightness / SDR content brightness in HDR"
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Crosshair",
-    "Tooltip": "Toggle the on-panel crosshair (OSD Sidekick HID)"
+    "Tooltip": "Toggle monitor crosshair via OSD Sidekick HID"
   },
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Picture Mode",
-    "Tooltip": "Cycle Graphics profiles — preview while turning, apply on pause"
+    "Tooltip": "Cycle Graphics / Picture Mode profiles (SDR/HDR)"
   },
   "Category": "Last Omega"
 }

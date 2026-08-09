@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Last Omega — MiraBox N4 Pro × Gigabyte MO32U2" width="100%"/>
+  <img src="assets/banner.png" alt="Last Omega — MiraBox N4 Pro × Gigabyte MO32U2" width="100%"/>
 </p>
 
 <h1 align="center">Last Omega</h1>
@@ -24,14 +24,14 @@
   <img alt="Runtime" src="https://img.shields.io/badge/Node.js-20-brightgreen"/>
   <img alt="Device" src="https://img.shields.io/badge/Device-MiraBox%20N4%20Pro-blueviolet"/>
   <img alt="Monitor" src="https://img.shields.io/badge/Monitor-Gigabyte%20MO32U2-informational"/>
-  <img alt="Version" src="https://img.shields.io/badge/plugin-v0.5.5-orange"/>
+  <img alt="Version" src="https://img.shields.io/badge/plugin-v0.5.4-orange"/>
 </p>
 
 > Built and validated on **MiraBox N4 Pro** + **Gigabyte MO32U2**.  
 > Gifted to the **MiraBox / Stream Dock** community.  
 > Languages: **[English](README.md)** · **[Русский](docs/README.ru.md)** · **[中文](docs/README.zh-CN.md)**
 
-**Credits:** directed & product owner — **Rustam**; implementation — **Cursor (AI coding assistant)**.  
+**Credits:** directed & product owner — **R4444H**; implementation — **Cursor (AI coding assistant)**.  
 **License:** [MIT](LICENSE) — free for everyone: use, share, fork, and modify however you like.
 
 ---
@@ -56,41 +56,11 @@ Keep your aim, keep your hands on the dials, keep the monitor menu closed.
 
 ## Gallery
 
-Drop photos / clips here when ready — filenames match [`assets/screenshots/CAPTIONS.md`](assets/screenshots/CAPTIONS.md):
-
-| File | Idea |
-|------|------|
-| `assets/screenshots/01-hero-desk.jpg` | Desk hero — **MiraBox N4 Pro** + **MO32U2** |
-| `assets/screenshots/02-brightness-knob.jpg` | N4 Pro brightness dial (`24%` / `180n`) |
-| `assets/screenshots/03-picture-mode.jpg` | N4 Pro Picture Mode dial (STD → FPS → …) |
-| `assets/screenshots/04-hdr-crosshair.jpg` | N4 Pro keys: HDR + Crosshair |
-| `assets/screenshots/05-install.jpg` | Install zip / plugins folder |
-
-After you add images, uncomment (or paste) in this README:
-
-```markdown
 <p align="center">
-  <img src="assets/screenshots/01-hero-desk.jpg" alt="Last Omega on MiraBox + MO32U2" width="80%"/>
+  <img src="assets/screenshots/01-streamdock-keys.png" alt="Last Omega keys" width="32%"/>
+  <img src="assets/screenshots/02-streamdock-knobs.png" alt="Last Omega knobs" width="32%"/>
+  <img src="assets/screenshots/03-streamdock-hdr.png" alt="HDR settings" width="32%"/>
 </p>
-
-<p align="center">
-  <img src="assets/screenshots/02-brightness-knob.jpg" width="32%"/>
-  <img src="assets/screenshots/03-picture-mode.jpg" width="32%"/>
-  <img src="assets/screenshots/04-hdr-crosshair.jpg" width="32%"/>
-</p>
-```
-
-**Video (optional):** upload to YouTube / Bilibili / Streamable, then add under Gallery:
-
-```markdown
-<p align="center">
-  <a href="https://youtu.be/YOUR_ID"><img src="assets/screenshots/01-hero-desk.jpg" alt="Watch demo" width="80%"/></a>
-</p>
-
-> Demo (60–90s): knobs → brightness → picture mode → HDR — no OSD.
-```
-
-Do **not** commit huge raw `.mp4` into git (keep under ~5–10 MB if you must). Prefer an external host + thumbnail in `assets/screenshots/`.
 
 ---
 
@@ -139,7 +109,7 @@ See also the full guide: **[docs/INSTALL.md](docs/INSTALL.md)** ([RU](docs/INSTA
 Or from PowerShell (after downloading the zip):
 
 ```powershell
-Expand-Archive .\LastOmega-0.5.5-windows.zip -DestinationPath "$env:TEMP\lastomega"
+Expand-Archive .\LastOmega-0.5.4-windows.zip -DestinationPath "$env:TEMP\lastomega"
 Copy-Item "$env:TEMP\lastomega\com.mirabox.streamdock.lastomega.sdPlugin" `
   "$env:APPDATA\HotSpot\StreamDock\plugins\" -Recurse -Force
 ```
@@ -148,7 +118,7 @@ Copy-Item "$env:TEMP\lastomega\com.mirabox.streamdock.lastomega.sdPlugin" `
 
 ```powershell
 # From a cloned repo, after you placed the zip under dist\
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
 ### Option C — Build from source
@@ -189,7 +159,7 @@ cd ..\..\..
 ```text
 last-omega/
 ├── README.md / docs/          # EN + RU + ZH
-├── assets/                    # Banner + screenshot captions
+├── assets/                    # Banner + screenshots
 ├── scripts/
 │   ├── deploy.ps1             # Dev install
 │   ├── pack.ps1               # Release zip for MiraBox users
@@ -197,24 +167,12 @@ last-omega/
 ├── tools/probes/              # Hardware experiments (not shipped)
 ├── .github/workflows/         # Release packaging CI
 └── com.mirabox.streamdock.lastomega.sdPlugin/
-    ├── manifest.json          # v0.5.5 · Node 20
+    ├── manifest.json          # v0.5.4 · Node 20
     ├── en.json / ru.json / zh_CN.json
     ├── plugin/                # index.js + *.ps1 helpers + ws
     ├── propertyInspector/     # Per-action settings
     └── static/
 ```
-
----
-
-## Screenshot lines (for store / social)
-
-> **Your MO32U2. Your knobs. No OSD diving.**  
-> Dial brightness in SDR `%` or HDR nits — same knob, right unit.  
-> Preview picture modes while you turn; apply when you pause.
-
-More EN / RU / ZH copy: [`assets/screenshots/CAPTIONS.md`](assets/screenshots/CAPTIONS.md)
-
-Drop real photos into `assets/screenshots/` using the filenames listed there.
 
 ---
 
@@ -242,7 +200,7 @@ Other Gigabyte Sidekick panels may work partially — open an issue with your mo
 
 | Role | Who |
 |------|-----|
-| Direction, product decisions, testing on **N4 Pro + MO32U2** | **Rustam** |
-| Implementation (code, docs, packaging) | **Cursor AI** (Grok), under Rustam’s guidance |
+| Direction, product decisions, testing on **N4 Pro + MO32U2** | **R4444H** |
+| Implementation (code, docs, packaging) | **Cursor AI**, under R4444H’s guidance |
 
-Built as a gift for the MiraBox community — not a locked product.
+Released under the **[MIT License](LICENSE)** — you may use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of this software.

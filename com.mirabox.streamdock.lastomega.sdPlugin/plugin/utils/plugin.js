@@ -1,59 +1,15 @@
 const ws = require('ws');
-const fs = require('fs');
-const path = require('path');
 
-const DEBUG_LOG = path.join(__dirname, '..', 'lastomega-debug.log');
-const DEBUG_MAX = 48 * 1024;
-
-function writeDebugLine(level, args) {
-  try {
-    const line =
-      `${new Date().toISOString()} [${level}] ` +
-      args
-        .map((a) => {
-          if (a instanceof Error) return a.stack || a.message;
-          if (typeof a === 'string') return a;
-          try {
-            return JSON.stringify(a);
-          } catch (_) {
-            return String(a);
-          }
-        })
-        .join(' ') +
-      '\n';
-    let prev = '';
-    try {
-      prev = fs.readFileSync(DEBUG_LOG, 'utf8');
-    } catch (_) {}
-    const next = (prev + line).slice(-DEBUG_MAX);
-    fs.writeFileSync(DEBUG_LOG, next, 'utf8');
-  } catch (_) {}
-}
-
-const DEBUG_ENABLED =
-  process.env.LASTOMEGA_DEBUG === '1' || process.env.LASTOMEGA_DEBUG === 'true';
-
-// Errors always go to console + small on-disk ring log (StreamDock hides console).
-// Info/warn only when LASTOMEGA_DEBUG=1.
+// No on-disk logs: keep plugin folder size stable.
 const log = {
-  info: (...args) => {
-    if (DEBUG_ENABLED) writeDebugLine('info', args);
-  },
-  warn: (...args) => {
-    if (DEBUG_ENABLED) writeDebugLine('warn', args);
-    try {
-      console.error('[lastomega:warn]', ...args);
-    } catch (_) {}
-  },
+  info: () => {},
+  warn: () => {},
   error: (...args) => {
-    writeDebugLine('error', args);
     try {
       console.error('[lastomega]', ...args);
     } catch (_) {}
   }
 };
-
-if (DEBUG_ENABLED) writeDebugLine('info', ['plugin boot', DEBUG_LOG]);
 
 process.on('uncaughtException', (error) => {
   log.error('Uncaught Exception:', error);

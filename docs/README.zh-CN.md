@@ -20,10 +20,13 @@ HDR、亮度、准星与图像模式，无需再钻进屏幕菜单。
 | **准星** | 通过 Sidekick HID 控制面板准星 |
 | **图像模式** | 转动预览，停转后写入 Graphics / Picture Mode |
 
-## 截图 / 视频
+## 截图
 
-把截图放到 `assets/screenshots/`（文件名与文案见 [`../assets/screenshots/CAPTIONS.md`](../assets/screenshots/CAPTIONS.md)）。  
-README 插入方式与 YouTube/Bilibili 链接见英文主文档 [`../README.md`](../README.md) 的 **Gallery** 一节。
+<p align="center">
+  <img src="../assets/screenshots/01-streamdock-keys.png" alt="Last Omega 按键" width="32%"/>
+  <img src="../assets/screenshots/02-streamdock-knobs.png" alt="Last Omega 旋钮" width="32%"/>
+  <img src="../assets/screenshots/03-streamdock-hdr.png" alt="HDR 设置" width="32%"/>
+</p>
 
 ## 环境要求
 
@@ -43,6 +46,8 @@ README 插入方式与 YouTube/Bilibili 链接见英文主文档 [`../README.md`
 
 ## 安装成品包
 
+完整步骤：**[INSTALL.zh-CN.md](INSTALL.zh-CN.md)**（[EN](INSTALL.md) · [RU](INSTALL.ru.md)）
+
 1. 从 [Releases](../../releases/latest) 下载 `LastOmega-<version>-windows.zip`
 2. 退出 Stream Dock
 3. 将文件夹 `com.mirabox.streamdock.lastomega.sdPlugin` 解压到：
@@ -54,7 +59,7 @@ README 插入方式与 YouTube/Bilibili 链接见英文主文档 [`../README.md`
 4. 启动 Stream Dock → 分类 **Last Omega**
 
 ```powershell
-.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.5-windows.zip
+.\scripts\install-release.ps1 -ZipPath .\dist\LastOmega-0.5.4-windows.zip
 ```
 
 ## 从源码构建
@@ -74,14 +79,6 @@ cd ..\..\..
 - 亮度 — DDC/CI + HDR 下 SDR 白电平 API
 - 准星 / 图像模式 — Sidekick USB HID（`VID_0BDA&PID_1100`）
 
-## 截图文案
-
-> **专为 Gigabyte MO32U2 — 旋钮直达，告别 OSD。**  
-> 同一亮度旋钮：SDR 用 `%`，HDR 用 nits。  
-> 转动即预览图像模式，停转后再写入。
-
-完整文案（英/俄/中）：[`../assets/screenshots/CAPTIONS.md`](../assets/screenshots/CAPTIONS.md)
-
 ## 许可
 
 [MIT](../LICENSE) — **对所有人免费**：可下载、使用、修改、再分发（含商业分支），只需保留版权声明。
@@ -90,7 +87,7 @@ cd ..\..\..
 
 | 角色 | 人员 |
 |------|------|
-| 产品方向、决策、**N4 Pro + MO32U2** 实测 | **Rustam** |
-| 实现（代码、文档、打包） | **Cursor AI**（Grok），由 Rustam 指导 |
+| 产品方向、决策、**N4 Pro + MO32U2** 实测 | **R4444H** |
+| 实现（代码、文档、打包） | **Cursor AI**，由 R4444H 指导 |
 
-献给 MiraBox 社区。
+以 **[MIT 许可证](../LICENSE)** 发布 — 可自由使用、复制、修改、合并、发布、分发、再许可和/或出售本软件的副本。

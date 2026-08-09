@@ -79,7 +79,8 @@ function writeStateCacheFile() {
         short: state.short || state.label || '',
         name: state.name || '',
         hdrEnabled: !!state.hdrEnabled,
-        lastSentValue: state.lastSentValue
+        lastSentValue: state.lastSentValue,
+        modes: Array.isArray(state.modes) ? state.modes.slice(0, 16) : undefined
       };
     }
 
@@ -132,17 +133,18 @@ function hydrateStateCache() {
     if (pictureByFilter[filter]) continue;
     const value = Number(cached.value);
     if (!Number.isFinite(value)) continue;
+    const modes = normalizePictureModes(cached.modes);
     pictureByFilter[filter] = {
       value,
       short: cached.short || cached.label || String(value),
       name: cached.name || cached.short || String(value),
       hdrEnabled: !!cached.hdrEnabled,
-      modes: [],
+      modes: modes || [],
       commitTimer: null,
       committing: false,
-      loadingModes: false,
       pendingValue: null,
       holdUntil: 0,
+      loadingModes: false,
       lastSentValue: Number.isFinite(Number(cached.lastSentValue))
         ? Number(cached.lastSentValue)
         : value
@@ -1378,6 +1380,36 @@ function applyPictureVisual(context, label) {
   applyKeyVisual(context, label || '—');
 }
 
+function normalizePictureModes(modes) {
+  if (!Array.isArray(modes) || !modes.length) return null;
+  return modes
+    .map((m) => ({
+      id: Number(m.id),
+      name: String(m.name || m.short || m.id),
+      short: String(m.short || m.name || m.id)
+    }))
+    .filter((m) => Number.isFinite(m.id));
+}
+
+function ensurePictureState(filter) {
+  if (!pictureByFilter[filter]) {
+    pictureByFilter[filter] = {
+      value: 0,
+      short: '…',
+      name: '…',
+      hdrEnabled: false,
+      modes: [],
+      commitTimer: null,
+      committing: false,
+      pendingValue: null,
+      holdUntil: 0,
+      lastSentValue: null,
+      loadingModes: false
+    };
+  }
+  return pictureByFilter[filter];
+}
+
 function paintPictureFromCache(context) {
   const filter = pictureFilter(context);
   const state = pictureByFilter[filter];
@@ -1394,48 +1426,44 @@ function paintPictureEverywhere(filter, state) {
     plugin.sendToPropertyInspector({
       type: 'pictureModeStatus',
       ok: true,
-      ...state,
+      value: state.value,
+      short: state.short,
+      name: state.name,
+      hdrEnabled: state.hdrEnabled,
+      modes: state.modes,
+      pending: state.pendingValue != null || !!state.commitTimer || !!state.committing,
       settings: pictureSettings(context)
     });
   }
 }
 
-function normalizePictureModes(modes, fallback) {
-  if (Array.isArray(modes) && modes.length > 0) return modes;
-  if (Array.isArray(fallback) && fallback.length > 0) return fallback;
-  return [];
-}
-
+// Mutate in place — never replace the object (avoids stale refs / lost modes).
 function rememberPictureState(filter, result, { keepPending = false } = {}) {
-  const prev = ensurePictureState(filter);
-  const modes = normalizePictureModes(result?.modes, prev.modes);
+  const state = ensurePictureState(filter);
+  const modes = normalizePictureModes(result.modes) || state.modes;
 
-  prev.value = Number(result.value);
-  prev.short = result.short || result.label || String(result.value);
-  prev.name = result.name || result.short || String(result.value);
-  prev.hdrEnabled = !!result.hdrEnabled;
-  if (modes.length) prev.modes = modes;
+  if (Number.isFinite(Number(result.value))) {
+    state.value = Number(result.value);
+  }
+  state.short = result.short || result.label || state.short || String(state.value);
+  state.name = result.name || result.short || state.name || String(state.value);
+  state.hdrEnabled = !!result.hdrEnabled;
+  if (modes && modes.length) state.modes = modes;
 
   if (!keepPending) {
-    if (prev.commitTimer) {
-      clearTimeout(prev.commitTimer);
-      prev.commitTimer = null;
-    }
-    prev.pendingValue = null;
-    // Never clear committing here — only commitPictureMode.finally owns that flag.
+    state.commitTimer = null;
+    state.committing = false;
+    state.pendingValue = null;
   }
-
   writeStateCacheFile();
-  return prev;
+  return state;
 }
 
 function isPictureBusy(filter) {
   const state = pictureByFilter[filter];
   if (!state) return false;
-  // Don't let status poll overwrite the preview while browsing or applying.
-  if (state.committing || state.commitTimer || state.pendingValue != null) return true;
-  if (state.loadingModes) return true;
-  return Date.now() < (state.holdUntil || 0);
+  // Block status poll only while user is browsing or a set is running.
+  return !!(state.committing || state.commitTimer || state.pendingValue != null);
 }
 
 async function refreshPictureMode(context) {
@@ -1451,26 +1479,24 @@ async function refreshPictureMode(context) {
       nameFilter: filter
     });
     if (!result?.ok) throw new Error(result?.error || 'picture status failed');
-    // Status may race with a fresh user set — ignore if busy again.
     if (isPictureBusy(filter)) {
       paintPictureFromCache(context);
       return null;
     }
-    const prev = ensurePictureState(filter);
+    const prev = pictureByFilter[filter];
     const nextValue = Number(result.value);
     const nextShort = result.short || result.label || String(result.value);
     const unchanged =
+      prev &&
       Number.isFinite(prev.value) &&
       prev.value === nextValue &&
       String(prev.short || '') === String(nextShort) &&
       !!prev.hdrEnabled === !!result.hdrEnabled;
 
     const state = rememberPictureState(filter, result);
-    if (unchanged) {
-      paintPictureFromCache(context);
-    } else {
-      paintPictureEverywhere(filter, state);
-    }
+    // Keep lastSentValue across status polls.
+    if (unchanged) paintPictureFromCache(context);
+    else paintPictureEverywhere(filter, state);
     return result;
   } catch (error) {
     log.error('refreshPictureMode', error);
@@ -1496,6 +1522,17 @@ function restartPicturePoll(context) {
   }, ms);
 }
 
+function unlockPictureCommit(filter) {
+  const state = pictureByFilter[filter];
+  if (!state) return;
+  state.committing = false;
+  state.holdUntil = 0;
+  if (state.commitWatchdog) {
+    clearTimeout(state.commitWatchdog);
+    state.commitWatchdog = null;
+  }
+}
+
 async function commitPictureMode(filter) {
   const state = ensurePictureState(filter);
   if (state.committing) return;
@@ -1511,66 +1548,54 @@ async function commitPictureMode(filter) {
 
   if (!Number.isFinite(target)) return;
 
-  // Already matches last confirmed hardware target — no HID spam.
   if (state.lastSentValue != null && Number(state.lastSentValue) === target) {
-    state.committing = false;
-    state.holdUntil = 0;
+    unlockPictureCommit(filter);
     paintPictureEverywhere(filter, state);
     return;
   }
 
   state.committing = true;
-  state.holdUntil = 0;
-  const committedTarget = target;
-  log.info('picture.commit.start', { target: committedTarget, short: state.short });
+  // Safety: never leave dial locked if PowerShell hangs.
+  state.commitWatchdog = setTimeout(() => {
+    log.error('commitPictureMode watchdog — forcing unlock', filter);
+    unlockPictureCommit(filter);
+  }, 12000);
 
   try {
     const result = await runPictureMode({
       action: 'set',
       nameFilter: filter,
-      value: committedTarget
+      value: target
     });
     if (!result?.ok) throw new Error(result?.error || 'picture set failed');
 
-    state.lastSentValue = committedTarget;
-    const modes = normalizePictureModes(result.modes, state.modes);
-    if (modes.length) state.modes = modes;
-
-    // If user browsed further while set was in flight, keep their preview as-is.
+    const live = ensurePictureState(filter);
+    const modes = normalizePictureModes(result.modes) || live.modes;
+    const match = (modes || []).find((m) => Number(m.id) === target);
     const browsedAway =
-      state.pendingValue != null && Number(state.pendingValue) !== committedTarget;
+      live.pendingValue != null && Number(live.pendingValue) !== target;
+
+    live.lastSentValue = target;
+    if (modes && modes.length) live.modes = modes;
 
     if (!browsedAway) {
-      const match = modes.find((m) => Number(m.id) === committedTarget);
-      state.value = committedTarget;
-      state.short = match?.short || result.short || String(committedTarget);
-      state.name = match?.name || result.name || state.short;
-      state.hdrEnabled = !!result.hdrEnabled;
-      paintPictureEverywhere(filter, state);
+      live.value = target;
+      live.short = match?.short || result.short || String(target);
+      live.name = match?.name || result.name || String(target);
+      live.hdrEnabled = !!result.hdrEnabled;
+      live.pendingValue = null;
+      paintPictureEverywhere(filter, live);
     }
-
     writeStateCacheFile();
-    log.info('picture.commit.ok', {
-      target: committedTarget,
-      browsedAway,
-      modes: state.modes.length,
-      pending: state.pendingValue
-    });
   } catch (error) {
     log.error('commitPictureMode', error);
   } finally {
-    state.committing = false;
-    state.holdUntil = 0;
-    log.info('picture.commit.done', {
-      committing: state.committing,
-      pending: state.pendingValue,
-      lastSent: state.lastSentValue,
-      modes: Array.isArray(state.modes) ? state.modes.length : -1
-    });
-    // User picked another mode during set — apply after a fresh idle pause.
+    const live = ensurePictureState(filter);
+    unlockPictureCommit(filter);
+    // Apply whatever the user browsed to while set was running.
     if (
-      state.pendingValue != null &&
-      Number(state.pendingValue) !== Number(state.lastSentValue)
+      live.pendingValue != null &&
+      Number(live.pendingValue) !== Number(live.lastSentValue)
     ) {
       schedulePictureCommit(filter);
     }
@@ -1586,74 +1611,47 @@ function schedulePictureCommit(filter) {
   }, PICTURE_COMMIT_MS);
 }
 
-function ensurePictureState(filter) {
-  if (pictureByFilter[filter]) return pictureByFilter[filter];
-  pictureByFilter[filter] = {
-    value: 0,
-    short: '…',
-    name: '…',
-    hdrEnabled: false,
-    modes: [],
-    commitTimer: null,
-    committing: false,
-    loadingModes: false,
-    pendingValue: null,
-    holdUntil: 0,
-    lastSentValue: null
-  };
-  return pictureByFilter[filter];
-}
-
 async function ensurePictureModes(filter) {
   const state = ensurePictureState(filter);
-  if (normalizePictureModes(state.modes).length) return state.modes;
-  if (state.loadingModes) return state.modes;
+  if (normalizePictureModes(state.modes)) return state.modes;
+  if (state.loadingModes) return null;
 
   state.loadingModes = true;
   try {
     const list = await runPictureMode({ action: 'list', nameFilter: filter });
     if (list?.ok) {
-      const modes = list.hdrEnabled ? list.hdrModes : list.sdrModes;
-      state.modes = normalizePictureModes(modes, state.modes);
-      state.hdrEnabled = !!list.hdrEnabled;
+      const modes = normalizePictureModes(
+        list.hdrEnabled ? list.hdrModes : list.sdrModes
+      );
+      if (modes) {
+        // Always write to the live map entry, not a stale closure ref.
+        const live = ensurePictureState(filter);
+        live.modes = modes;
+        live.hdrEnabled = !!list.hdrEnabled;
+        return modes;
+      }
     }
   } catch (error) {
     log.error('ensurePictureModes', error);
   } finally {
-    state.loadingModes = false;
+    ensurePictureState(filter).loadingModes = false;
   }
-  return state.modes;
+  return null;
 }
 
-function adjustPictureMode(context, ticks) {
+async function adjustPictureMode(context, ticks) {
   const filter = pictureFilter(context);
-  const rawTicks = Number(ticks) || 0;
-  const delta = Math.sign(rawTicks);
+  const delta = Math.sign(Number(ticks) || 0);
   if (!delta) {
     if (!isPictureBusy(filter)) refreshPictureMode(context).catch(() => {});
     return;
   }
 
   const state = ensurePictureState(filter);
-  const modes = normalizePictureModes(state.modes);
-  log.info('picture.dial', {
-    ticks: rawTicks,
-    delta,
-    value: state.value,
-    pending: state.pendingValue,
-    committing: !!state.committing,
-    modes: modes.length,
-    lastSent: state.lastSentValue
-  });
-
-  if (!modes.length) {
-    ensurePictureModes(filter)
-      .then((loaded) => {
-        log.info('picture.modesLoaded', normalizePictureModes(loaded).length);
-        if (normalizePictureModes(loaded).length) adjustPictureMode(context, delta);
-      })
-      .catch(() => {});
-    return;
+  let modes = normalizePictureModes(state.modes);
+  if (!modes) {
+    modes = await ensurePictureModes(filter);
+    if (!modes) return;
   }
 
   let idx = modes.findIndex((m) => Number(m.id) === Number(state.value));
@@ -1662,7 +1660,7 @@ function adjustPictureMode(context, ticks) {
   const next = modes[nextIdx];
   if (!next) return;
 
-  // Preview always updates. Hardware set waits for idle pause.
+  // Preview always moves. Hardware waits for idle pause.
   state.value = Number(next.id);
   state.short = next.short || next.name || String(next.id);
   state.name = next.name || state.short;
@@ -1670,11 +1668,8 @@ function adjustPictureMode(context, ticks) {
   applyPictureVisual(context, state.short);
   paintPictureEverywhere(filter, state);
 
-  if (state.committing) {
-    log.info('picture.dialDuringCommit', state.pendingValue);
-    return;
-  }
-  schedulePictureCommit(filter);
+  // Queue another set after the in-flight one; don't block the dial face.
+  if (!state.committing) schedulePictureCommit(filter);
 }
 
 plugin.pictureMode = new Actions({
@@ -1689,11 +1684,9 @@ plugin.pictureMode = new Actions({
     restartPicturePoll(context);
 
     const filter = pictureFilter(context);
-    ensurePictureModes(filter)
-      .catch(() => {})
-      .finally(() => {
-        refreshPictureMode(context).catch(() => {});
-      });
+    ensurePictureState(filter);
+    await ensurePictureModes(filter);
+    refreshPictureMode(context).catch(() => {});
   },
 
   _willDisappear({ context }) {
@@ -1724,13 +1717,14 @@ plugin.pictureMode = new Actions({
   },
 
   dialRotate({ context, payload }) {
-    adjustPictureMode(context, payload?.ticks || 0);
+    adjustPictureMode(context, payload?.ticks || 0).catch((error) =>
+      log.error('dialRotate picture', error)
+    );
   },
 
   dialDown({ context }) {
     const filter = pictureFilter(context);
     const state = pictureByFilter[filter];
-    // Press applies current preview immediately (unless a set is already running).
     if (state?.committing) return;
     if (state?.pendingValue != null || state?.commitTimer) {
       if (state.commitTimer) {
@@ -1752,7 +1746,7 @@ plugin.pictureMode = new Actions({
     }
 
     if (payload.type === 'delta') {
-      adjustPictureMode(context, payload.delta || 0);
+      adjustPictureMode(context, payload.delta || 0).catch(() => {});
       return;
     }
 
