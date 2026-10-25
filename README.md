@@ -45,9 +45,9 @@ The **MiraBox N4 Pro** (Stream Dock) has real knobs and keys sitting on your des
 | Action | What it does |
 |--------|----------------|
 | **HDR Toggle** | Flip Windows HDR for the MO32U2 |
-| **Brightness** | Turn for monitor brightness **0–100** in SDR and HDR; press the key or dial to toggle HDR |
+| **Brightness** | Turn for SDR monitor brightness **0–100**; press to switch HDR/SDR and select that mode's default profile. HDR preset brightness uses the monitor OSD |
 | **Crosshair** | On-panel AIM via Gigabyte Sidekick HID, with a verified DDC fallback on MO32U2 |
-| **Picture Mode** | Cycle **Graphics** profiles (STD / FPS / MOBA / …) with preview-then-apply |
+| **Picture Mode** | Cycle SDR **Graphics** profiles (STD / FPS / MOBA / …); HDR presets show **HDR OSD** |
 | **Refresh Rate** | Show current panel Hz on a Key (`240Hz`), configurable poll interval |
 
 Keep your aim, keep your hands on the dials, keep the monitor menu closed.
@@ -149,7 +149,7 @@ cd ..\..
 | Plugin host API | Stream Dock SDK (`ws` WebSocket, Node 20) |
 | Monitor session | One Windows PowerShell process, serialized local JSON over stdin/stdout |
 | HDR | Windows DisplayConfig |
-| Brightness | DDC/CI monitor brightness in SDR and HDR |
+| Brightness | DDC/CI SDR monitor brightness; MO32U2 HDR preset brightness is not exposed by this interface |
 | Crosshair / Picture | Gigabyte OSD Sidekick USB HID (`VID_0BDA&PID_1100`); AIM also supports MO32U2 DDC `0xEF` |
 | Refresh Rate | DisplayConfig path refresh (Hz), snapped to common panel rates |
 | UI | Transparent keys + dial titles; Property Inspectors (HTML) |
@@ -167,9 +167,20 @@ seconds. Windows display events and user input refresh the affected controls
 immediately. AIM has no recurring poll. Only visible controls keep a poll active;
 failures use bounded backoff. Hardware writes have priority over queued reads.
 Brightness changes preview immediately and are combined into one write after
-280 ms without rotation. Picture mode selection is remembered from the last
-successful plugin command; changes made directly in Sidekick are not reliably
-readable through the panel's remapped VCP `0x14`.
+280 ms without rotation. SDR picture status uses Sidekick's VCP `0xE7` and
+profile writes are confirmed by reading it back. VCP `0x14` is color temperature
+and is not used for profile selection. After applying an SDR profile, every
+brightness control reads the selected profile's brightness.
+
+An HDR toggle selects **Standard** when entering SDR. On the tested monitor,
+entering HDR returns to the normal **HDR** preset, as checked in its physical
+OSD. Independent HDR preset addressing has not been established. While HDR is
+active, this monitor's DDC/Sidekick getters still report
+SDR settings; they do not report the HDR Game/Movie/Vivid/Peak brightness shown
+in the monitor menu. Brightness and picture controls therefore show **HDR OSD**,
+with no fabricated percentages or SDR profile list. Rotation does not write SDR
+settings in HDR; pressing the brightness control still toggles HDR. See
+[monitor control details](docs/MONITOR-CONTROL.md).
 
 Measured on MO32U2 + N4 Pro on 2026-10-25, with the device's working profiles and
 32 logical processors (60-second idle samples; plugin and its descendants,

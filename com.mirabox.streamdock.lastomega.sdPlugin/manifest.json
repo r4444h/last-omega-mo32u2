@@ -56,7 +56,7 @@
       "Controllers": ["Keypad", "Information", "Knob"],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": true,
-      "Tooltip": "Нажатие: HDR вкл/выкл. Вращение: яркость монитора 0–100.",
+      "Tooltip": "Нажатие: HDR/SDR и профиль по умолчанию. Вращение: яркость SDR 0–100. Яркость HDR: меню монитора.",
       "UUID": "com.mirabox.streamdock.lastomega.brightness",
       "PropertyInspectorPath": "propertyInspector/brightness/index.html"
     },
@@ -115,7 +115,7 @@
       "Controllers": ["Keypad", "Information", "Knob"],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": true,
-      "Tooltip": "Профили Графика (Picture Mode) SDR/HDR для Gigabyte MO32U2",
+      "Tooltip": "Профили SDR для Gigabyte MO32U2. Профили HDR: меню монитора.",
       "UUID": "com.mirabox.streamdock.lastomega.pictureMode",
       "PropertyInspectorPath": "propertyInspector/pictureMode/index.html"
     },

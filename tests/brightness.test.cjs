@@ -8,7 +8,9 @@ const pluginDir = path.resolve(__dirname, '../com.mirabox.streamdock.lastomega.s
 const source = fs.readFileSync(path.join(pluginDir, 'index.js'), 'utf8');
 const tick = () => new Promise(setImmediate);
 
-function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
+// hdrControlsAvailable=true models a backend that actually exposes HDR values.
+// MO32U2's observed unsupported HDR behavior is exercised separately below.
+function fixture(t, { hdr = false, cache = {}, intercept, hdrControlsAvailable = true } = {}) {
   const messages = [], calls = [], writes = [], cacheWrites = [], timers = new Set();
   const hardware = { hdr, sdr: 70, hdrBrightness: 10, pictureSdr: 0, pictureHdr: 0 };
   class Plugins {
@@ -36,6 +38,17 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
         calls.push(call);
         const execute = () => {
           if (script === 'PictureModeControl.ps1') {
+            if (hardware.hdr && !hdrControlsAvailable) {
+              callback(null, JSON.stringify({ ok: ['status','list','default'].includes(action),
+                hdrEnabled: true, controlAvailable: false, value: null, modes: [],
+                hdrModes: [], short: 'HDR OSD', defaultProfileApplied: action === 'default',
+                unavailableReason: 'Use monitor OSD', error: 'Use monitor OSD' }), '');
+              return;
+            }
+            if (action === 'default') {
+              if (hardware.hdr) hardware.pictureHdr = 0;
+              else { hardware.pictureSdr = 0; hardware.sdr = 70; }
+            }
             if (action === 'set') {
               const value = Number(args[args.indexOf('-Value') + 1]);
               hardware[hardware.hdr ? 'pictureHdr' : 'pictureSdr'] = value;
@@ -51,15 +64,21 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
             hardware.hdr = action === 'on' ? true : action === 'off' ? false : !hardware.hdr;
           }
           if (script === 'BrightnessControl.ps1' && action === 'set') {
+            if (hardware.hdr && !hdrControlsAvailable) {
+              callback(null, '{"ok":false,"error":"Use monitor OSD"}', '');
+              return;
+            }
             const value = Number(args[args.indexOf('-Value') + 1]);
             const expected = args[args.indexOf('-ExpectedHdr') + 1];
             assert.equal(expected, hardware.hdr ? 'on' : 'off');
             writes.push({ value, hdr: hardware.hdr });
             hardware[hardware.hdr ? 'hdrBrightness' : 'sdr'] = value;
           }
-          const brightnessPercent = hardware.hdr ? hardware.hdrBrightness : hardware.sdr;
+          const available = !hardware.hdr || hdrControlsAvailable || script === 'HdrControl.ps1';
+          const brightnessPercent = available ? (hardware.hdr ? hardware.hdrBrightness : hardware.sdr) : null;
           callback(null, JSON.stringify({ ok: true, display: {
             name: 'MO32U2', hdrEnabled: hardware.hdr, brightnessPercent,
+            controlAvailable: available, unavailableReason: available ? null : 'Use monitor OSD',
             sdrWhiteNits: 210, unit: 'percent', value: brightnessPercent
           } }), '');
         };
@@ -86,6 +105,88 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   t.after(() => { for (const id of timers) clearTimeout(id); });
   return { ...api, messages, calls, writes, cacheWrites, hardware };
 }
+
+test('MO32U2 HDR hides stale numbers and SDR profiles and never writes from either dial', async t => {
+  const f = fixture(t, { hdr: true, hdrControlsAvailable: false, cache: {
+    brightness: { MO32U2: { value: 60, hdrEnabled: true, unit: 'percent' } },
+    picture: { MO32U2: { value: 1, hdrEnabled: true, short: 'GAME', modes: [{ id: 1, name: 'Gaming' }] } }
+  } });
+  assert.equal(f.brightnessByFilter.MO32U2, undefined, 'old HDR percentages must not flash on startup');
+  await f.refreshBrightness('key');
+  await f.refreshPictureMode('picture');
+  assert.equal(f.brightnessByFilter.MO32U2.value, null);
+  assert.equal(f.ensurePictureState('MO32U2').value, null);
+  assert.equal(f.ensurePictureState('MO32U2').modes.length, 0);
+  assert.equal(f.messages.filter(m => m.type === 'title' && m.context === 'knob').at(-1).title, 'HDR OSD');
+  assert.equal(f.messages.filter(m => m.type === 'title' && m.context === 'picture').at(-1).title, 'HDR OSD');
+  f.adjustBrightness('knob', 1);
+  await f.adjustPictureMode('picture', 1);
+  await f.commitBrightness('MO32U2');
+  await f.commitPictureMode('MO32U2');
+  assert.equal(f.calls.filter(c => c.action === 'set' || c.action === 'default').length, 0);
+  f.flushStateCacheFile();
+  const cache = JSON.parse(f.cacheWrites.find(c => c.type === 'write').value);
+  assert.equal(cache.brightness.MO32U2, undefined);
+  assert.equal(cache.picture.MO32U2, undefined);
+});
+
+test('pressing in unsupported HDR selects SDR Standard before reading its brightness', async t => {
+  const f = fixture(t, { hdr: true, hdrControlsAvailable: false });
+  f.hardware.pictureSdr = 1;
+  f.hardware.sdr = 25;
+  await f.refreshBrightness('key');
+  await f.refreshPictureMode('picture');
+  const before = f.calls.length;
+  await f.plugin.brightness.dialDown({ context: 'knob' });
+  assert.equal(f.hardware.hdr, false);
+  assert.equal(f.hardware.pictureSdr, 0);
+  assert.equal(f.ensurePictureState('MO32U2').short, 'STD');
+  assert.equal(f.brightnessByFilter.MO32U2.value, 70);
+  const change = f.calls.slice(before);
+  const profileIndex = change.findIndex(c => c.script === 'PictureModeControl.ps1' && c.action === 'default');
+  const brightnessIndex = change.findIndex(c => c.script === 'BrightnessControl.ps1' && c.action === 'status');
+  assert.ok(profileIndex >= 0 && brightnessIndex > profileIndex);
+  f.adjustBrightness('knob', 1);
+  await f.commitBrightness('MO32U2');
+  assert.deepEqual(f.writes, [{ value: 71, hdr: false }]);
+  await f.plugin.brightness.dialDown({ context: 'knob' });
+  assert.equal(f.hardware.hdr, true);
+  assert.equal(f.calls.filter(c => c.script === 'PictureModeControl.ps1' && c.action === 'default').length, 2);
+  assert.equal(f.brightnessByFilter.MO32U2.value, null);
+  assert.equal(f.ensurePictureState('MO32U2').modes.length, 0);
+});
+
+test('entering unsupported HDR drops pending old SDR values and does not retry an unavailable reading', async t => {
+  let release;
+  const f = fixture(t, { hdrControlsAvailable: false, intercept(call, execute) {
+    if (call.script === 'HdrControl.ps1' && call.action === 'toggle') { release = execute; return true; }
+  } });
+  await f.refreshBrightness('key');
+  f.adjustBrightness('knob', 1);
+  const change = f.plugin.brightness.dialDown({ context: 'knob' });
+  await tick();
+  f.adjustBrightness('knob', 2);
+  release();
+  await change;
+  assert.equal(f.brightnessByFilter.MO32U2.loading, false);
+  assert.equal(f.brightnessByFilter.MO32U2.pendingTicks, 0);
+  assert.equal(f.calls.filter(c => c.script === 'BrightnessControl.ps1' && c.action === 'status').length, 2);
+  assert.equal(f.writes.length, 0);
+});
+
+test('an external HDR change refreshes both availability states and restores them in SDR', async t => {
+  const f = fixture(t, { hdrControlsAvailable: false });
+  await f.refreshBrightness('key');
+  await f.refreshPictureMode('picture');
+  f.hardware.hdr = true;
+  await f.refreshHdr('hdr');
+  assert.equal(f.brightnessByFilter.MO32U2.controlAvailable, false);
+  assert.equal(f.ensurePictureState('MO32U2').controlAvailable, false);
+  f.hardware.hdr = false;
+  await f.refreshHdr('hdr');
+  assert.equal(f.brightnessByFilter.MO32U2.controlAvailable, true);
+  assert.equal(f.ensurePictureState('MO32U2').controlAvailable, true);
+});
 
 for (const hdr of [false, true]) {
   test(`applying a picture profile immediately refreshes both brightness faces in ${hdr ? 'HDR' : 'SDR'}`, async t => {

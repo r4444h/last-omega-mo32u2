@@ -1,7 +1,9 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Read/adjust the monitor's own brightness, 0..100, in SDR and HDR via DDC.
+  Read/adjust the monitor's own brightness, 0..100, via DDC in supported modes.
+  MO32U2 exposes its SDR brightness register while HDR is active. Do not treat
+  that register as the independent HDR preset brightness or write it in HDR.
   Windows SDR white level is reported for diagnostics and is never changed.
 
 .EXAMPLE
@@ -198,6 +200,8 @@ public static class BrightNative
         public string Label;
         public string Unit;
         public double Value;
+        public bool ControlAvailable = true;
+        public string UnavailableReason;
     }
 
     private static bool WithPhysicalMonitor(string gdiDevice, Func<IntPtr, bool> fn)
@@ -244,14 +248,14 @@ public static class BrightNative
         return false;
     }
 
-    private static Dictionary<string, int> ReadDdcBrightnessByGdiDevice()
+    private static Dictionary<string, int> ReadDdcBrightnessByGdiDevice(string targetDevice)
     {
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMon, hdc, lprc, data) =>
         {
             var mi = new MONITORINFOEX();
             mi.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
-            if (!GetMonitorInfo(hMon, ref mi) || string.IsNullOrEmpty(mi.szDevice))
+            if (!GetMonitorInfo(hMon, ref mi) || !string.Equals(mi.szDevice, targetDevice, StringComparison.OrdinalIgnoreCase))
                 return true;
 
             uint count = 0;
@@ -284,7 +288,13 @@ public static class BrightNative
 
     private static void FillLabel(DisplayBrightInfo info)
     {
-        if (info.BrightnessPercent.HasValue)
+        if (!info.ControlAvailable)
+        {
+            info.Value = 0;
+            info.Unit = "unavailable";
+            info.Label = "HDR OSD";
+        }
+        else if (info.BrightnessPercent.HasValue)
         {
             info.Value = info.BrightnessPercent.Value;
             info.Unit = "percent";
@@ -301,7 +311,6 @@ public static class BrightNative
     public static List<DisplayBrightInfo> GetDisplays()
     {
         var result = new List<DisplayBrightInfo>();
-        var ddc = ReadDdcBrightnessByGdiDevice();
 
         uint pathCount, modeCount;
         if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, out pathCount, out modeCount) != ERROR_SUCCESS)
@@ -372,6 +381,13 @@ public static class BrightNative
             if (DisplayConfigGetDeviceInfo(ref sdr) == ERROR_SUCCESS && sdr.SDRWhiteLevel > 0)
                 sdrNits = sdr.SDRWhiteLevel * 80.0 / 1000.0;
 
+            bool controlAvailable = !(hdrEnabled &&
+                (string.Equals(targetName.monitorFriendlyDeviceName, "MO32U2", StringComparison.OrdinalIgnoreCase) ||
+                 (targetName.monitorDevicePath ?? "").IndexOf("#GBT3217#", StringComparison.OrdinalIgnoreCase) >= 0));
+            // In unsupported HDR mode only query Windows display state. Polling
+            // the panel's unrelated SDR register cannot reveal the HDR setting.
+            var ddc = controlAvailable ? ReadDdcBrightnessByGdiDevice(sourceName.viewGdiDeviceName)
+                                       : new Dictionary<string, int>();
             int? brightness = null;
             if (!string.IsNullOrEmpty(sourceName.viewGdiDeviceName) && ddc.ContainsKey(sourceName.viewGdiDeviceName))
                 brightness = ddc[sourceName.viewGdiDeviceName];
@@ -399,7 +415,9 @@ public static class BrightNative
                 HdrEnabled = hdrEnabled,
                 Mode = mode,
                 BrightnessPercent = brightness,
-                SdrWhiteNits = sdrNits
+                SdrWhiteNits = sdrNits,
+                ControlAvailable = controlAvailable,
+                UnavailableReason = controlAvailable ? null : "Use the monitor OSD for HDR preset brightness. Sidekick/DDC expose the SDR setting on this MO32U2."
             };
             FillLabel(item);
             result.Add(item);
@@ -430,7 +448,7 @@ public static class BrightNative
 
     public static bool SetValue(DisplayBrightInfo display, double value)
     {
-        // The monitor has an independent DDC brightness setting in both modes.
+        if (!display.ControlAvailable) throw new InvalidOperationException(display.UnavailableReason);
         int pct = (int)Math.Round(value);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
@@ -457,6 +475,8 @@ function Convert-Display([BrightNative+DisplayBrightInfo]$d) {
     label              = $d.Label
     unit               = $d.Unit
     value              = $(if ($null -ne $d.BrightnessPercent) { $d.Value } else { $null })
+    controlAvailable   = $d.ControlAvailable
+    unavailableReason  = $d.UnavailableReason
   }
 }
 
@@ -488,6 +508,7 @@ function Select-TargetDisplay {
 }
 
 function Assert-BrightnessAvailable($display) {
+  if (-not $display.ControlAvailable) { throw $display.UnavailableReason }
   if ($null -eq $display.BrightnessPercent) {
     throw "Monitor brightness is unavailable over DDC; Windows SDR brightness was not substituted."
   }
@@ -512,7 +533,7 @@ switch ($Action) {
   }
   "status" {
     $target = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
-    Assert-BrightnessAvailable $target
+    if ($target.ControlAvailable) { Assert-BrightnessAvailable $target }
     @{
       ok      = $true
       action  = "status"

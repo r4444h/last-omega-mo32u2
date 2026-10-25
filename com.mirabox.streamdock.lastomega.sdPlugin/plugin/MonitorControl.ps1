@@ -17,7 +17,7 @@ $helpers = @{
   hdr = @{ file = 'HdrControl.ps1'; actions = @('status','list','toggle','on','off') }
   brightness = @{ file = 'BrightnessControl.ps1'; actions = @('status','list','set','adjust') }
   crosshair = @{ file = 'CrosshairControl.ps1'; actions = @('status','on','off','toggle','set') }
-  pictureMode = @{ file = 'PictureModeControl.ps1'; actions = @('status','list','set','delta') }
+  pictureMode = @{ file = 'PictureModeControl.ps1'; actions = @('status','list','set','delta','default') }
   refreshRate = @{ file = 'RefreshRateControl.ps1'; actions = @('status','list') }
 }
 $counts = @{ requests = 0; brightnessStatus = 0; brightnessSet = 0; pictureStatus = 0 }

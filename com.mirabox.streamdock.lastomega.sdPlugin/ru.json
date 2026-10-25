@@ -7,7 +7,7 @@
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Яркость",
-    "Tooltip": "Нажатие: HDR вкл/выкл. Вращение: яркость монитора 0–100."
+    "Tooltip": "Нажатие: HDR/SDR и профиль по умолчанию. Вращение: яркость SDR 0–100. Яркость HDR: меню монитора."
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Прицел",
@@ -15,7 +15,7 @@
   },
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Графика",
-    "Tooltip": "Переключение профилей Графика (SDR/HDR)"
+    "Tooltip": "Переключение профилей SDR. Профили HDR: меню монитора."
   },
   "com.mirabox.streamdock.lastomega.refreshRate": {
     "Name": "Герцовка",

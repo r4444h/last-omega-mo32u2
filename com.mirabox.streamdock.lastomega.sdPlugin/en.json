@@ -7,7 +7,7 @@
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Brightness",
-    "Tooltip": "Press to toggle HDR. Rotate to adjust monitor brightness 0–100."
+    "Tooltip": "Press: HDR/SDR with default profile. Rotate: SDR brightness 0–100. HDR brightness: monitor OSD."
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Crosshair",
@@ -15,7 +15,7 @@
   },
   "com.mirabox.streamdock.lastomega.pictureMode": {
     "Name": "Picture Mode",
-    "Tooltip": "Cycle Graphics / Picture Mode profiles (SDR/HDR)"
+    "Tooltip": "Cycle SDR picture profiles. HDR presets: monitor OSD."
   },
   "com.mirabox.streamdock.lastomega.refreshRate": {
     "Name": "Refresh Rate",

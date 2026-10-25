@@ -54,7 +54,7 @@ function flushStateCacheFile() {
   try {
     const brightness = {};
     for (const [filter, state] of Object.entries(brightnessByFilter)) {
-      if (!state || !Number.isFinite(state.value)) continue;
+      if (!state || state.controlAvailable === false || !Number.isFinite(state.value)) continue;
       brightness[filter] = {
         value: state.value,
         hdrEnabled: !!state.hdrEnabled,
@@ -82,7 +82,7 @@ function flushStateCacheFile() {
 
     const picture = {};
     for (const [filter, state] of Object.entries(pictureByFilter)) {
-      if (!state) continue;
+      if (!state || state.controlAvailable === false) continue;
       picture[filter] = {
         value: state.value,
         short: state.short || state.label || '',
@@ -131,7 +131,7 @@ function hydrateStateCache() {
   const disk = readStateCacheFile();
   for (const [filter, cached] of Object.entries(disk.brightness)) {
     if (brightnessByFilter[filter]) continue;
-    if (cached.unit !== 'percent') continue;
+    if (cached.unit !== 'percent' || cached.hdrEnabled) continue;
     const value = Number(cached.value);
     if (!Number.isFinite(value)) continue;
     brightnessByFilter[filter] = {
@@ -163,6 +163,7 @@ function hydrateStateCache() {
   }
   for (const [filter, cached] of Object.entries(disk.picture || {})) {
     if (pictureByFilter[filter]) continue;
+    if (cached.hdrEnabled) continue;
     const value = Number(cached.value);
     if (!Number.isFinite(value)) continue;
     const modes = normalizePictureModes(cached.modes);
@@ -523,6 +524,8 @@ async function refreshHdr(context) {
     });
     if (modeChanged && !brightnessTransitions[filter]) {
       await refreshBrightnessAfterModeChange(filter, enabled);
+      const pictureContext = Object.keys(plugin.pictureMode?.data || {}).find(key => pictureFilter(key) === filter);
+      if (pictureContext) await refreshPictureMode(pictureContext);
     }
     return display;
   } catch (error) {
@@ -586,7 +589,7 @@ function forEachBrightnessContext(filter, fn) {
 }
 
 function paintBrightnessEverywhere(filter, state) {
-  const label = brightnessLabel(state.value, state.hdrEnabled);
+  const label = state.controlAvailable === false ? 'HDR OSD' : brightnessLabel(state.value, state.hdrEnabled);
   forEachBrightnessContext(filter, (context, settings) => {
     applyBrightnessVisual(context, label);
     setContextState(context, state.hdrEnabled ? 1 : 0);
@@ -600,7 +603,9 @@ function paintBrightnessEverywhere(filter, state) {
         brightnessPercent: state.value,
         label,
         value: state.value,
-        unit: state.unit
+        unit: state.unit,
+        controlAvailable: state.controlAvailable,
+        unavailableReason: state.unavailableReason
       },
       settings
     });
@@ -612,6 +617,14 @@ function storeBrightnessFromDisplay(filter, display, keepTimers = true) {
   const prev = brightnessByFilter[filter] || {};
   const settings = settingsForFilter(filter);
   const hdrEnabled = !!display.hdrEnabled;
+  if (display.controlAvailable === false) {
+    if (prev.commitTimer) clearTimeout(prev.commitTimer);
+    const state = { value: null, hdrEnabled, unit: 'unavailable', controlAvailable: false,
+      unavailableReason: display.unavailableReason, commitTimer: null, committing: false,
+      loading: false, pendingTicks: 0, lastReadAt: Date.now() };
+    brightnessByFilter[filter] = state;
+    return state;
+  }
   if (display.brightnessPercent == null) return null;
   const value = Number(display.brightnessPercent);
   if (!Number.isFinite(value)) return null;
@@ -620,6 +633,7 @@ function storeBrightnessFromDisplay(filter, display, keepTimers = true) {
     value: clampBrightnessValue(value, settings, hdrEnabled),
     hdrEnabled,
     unit: 'percent',
+    controlAvailable: true,
     commitTimer: keepTimers ? prev.commitTimer || null : null,
     committing: keepTimers ? !!prev.committing : false,
     loading: false,
@@ -649,7 +663,7 @@ async function applyBrightnessResult(context, result, settings, { fromCommit = f
   const filter = settings.nameFilter || DEFAULT_FILTER;
   if (!result?.ok) throw new Error(result?.error || 'Monitor brightness read failed');
   const display = result.display || {};
-  if (display.brightnessPercent == null) throw new Error('Monitor brightness is unavailable');
+  if (display.controlAvailable !== false && display.brightnessPercent == null) throw new Error('Monitor brightness is unavailable');
 
   if (!fromCommit && isBrightnessBusy(filter)) {
     return display;
@@ -661,6 +675,7 @@ async function applyBrightnessResult(context, result, settings, { fromCommit = f
 
   const unchanged =
     prev &&
+    prev.controlAvailable === state.controlAvailable &&
     valuesAlmostEqual(prev.value, state.value) &&
     !!prev.hdrEnabled === !!state.hdrEnabled;
 
@@ -677,8 +692,8 @@ function paintBrightnessFromCache(context) {
   const filter = monitorFilter(context);
   if (brightnessTransitions[filter]) return false;
   const state = brightnessByFilter[filter];
-  if (!state || !Number.isFinite(state.value)) return false;
-  applyBrightnessVisual(context, brightnessLabel(state.value, state.hdrEnabled));
+  if (!state || (state.controlAvailable !== false && !Number.isFinite(state.value))) return false;
+  applyBrightnessVisual(context, state.controlAvailable === false ? 'HDR OSD' : brightnessLabel(state.value, state.hdrEnabled));
   setContextState(context, state.hdrEnabled ? 1 : 0);
   return true;
 }
@@ -723,6 +738,7 @@ async function commitBrightness(filter) {
   if (!state) return;
 
   state.commitTimer = null;
+  if (state.controlAvailable === false) { paintBrightnessEverywhere(filter, state); return; }
   const settings = settingsForFilter(filter);
   const epoch = brightnessEpochByFilter[filter] || 0;
   if (brightnessTransitions[filter]) return;
@@ -783,7 +799,7 @@ async function commitBrightness(filter) {
 
 function scheduleBrightnessCommit(filter) {
   const state = brightnessByFilter[filter];
-  if (!state) return;
+  if (!state || state.controlAvailable === false) return;
   if (state.commitTimer) clearTimeout(state.commitTimer);
   state.commitTimer = setTimeout(() => {
     commitBrightness(filter).catch((error) => log.error('commit timer', error));
@@ -793,7 +809,7 @@ function scheduleBrightnessCommit(filter) {
 function applyBrightnessDelta(filter, context, deltaTicks) {
   const settings = brightnessSettings(context);
   const shared = brightnessByFilter[filter];
-  if (!shared || !Number.isFinite(shared.value)) return false;
+  if (!shared || shared.controlAvailable === false || !Number.isFinite(shared.value)) return false;
 
   const step = shared.hdrEnabled ? settings.stepHdr : settings.stepSdr;
   const prev = shared.value;
@@ -840,9 +856,9 @@ async function loadBrightnessBaseline(filter, context) {
     const state = storeBrightnessFromDisplay(filter, result.display, false);
     if (!state) throw new Error('Monitor brightness is unavailable');
 
-    state.lastSentValue = state.value;
+    state.lastSentValue = state.controlAvailable === false ? undefined : state.value;
 
-    if (pendingTicks) {
+    if (pendingTicks && state.controlAvailable !== false) {
       applyBrightnessDelta(filter, context, pendingTicks);
     } else {
       paintBrightnessEverywhere(filter, state);
@@ -868,6 +884,10 @@ function adjustBrightness(context, ticks) {
 
   if (brightnessTransitions[filter]) {
     if (shared) shared.pendingTicks = (shared.pendingTicks || 0) + deltaTicks;
+    return;
+  }
+  if (shared?.controlAvailable === false) {
+    paintBrightnessEverywhere(filter, shared);
     return;
   }
 
@@ -924,7 +944,7 @@ async function refreshBrightnessAfterModeChange(filter, enabled, epoch) {
     try {
       const result = await runBrightness({ action: 'status', nameFilter: filter });
       if (epoch !== brightnessEpochByFilter[filter]) return null;
-      if (!result?.ok || result.display?.brightnessPercent == null) {
+      if (!result?.ok || (result.display?.controlAvailable !== false && result.display?.brightnessPercent == null)) {
         throw new Error(result?.error || 'Monitor brightness is unavailable after mode change');
       }
       if (typeof enabled === 'boolean' && !!result.display.hdrEnabled !== enabled) {
@@ -933,7 +953,7 @@ async function refreshBrightnessAfterModeChange(filter, enabled, epoch) {
       const pendingTicks = brightnessByFilter[filter]?.pendingTicks || 0;
       const state = storeBrightnessFromDisplay(filter, result.display, false);
       if (!state) throw new Error('Invalid monitor brightness');
-      state.lastSentValue = state.value;
+      state.lastSentValue = state.controlAvailable === false ? undefined : state.value;
       delete brightnessTransitions[filter];
       paintBrightnessEverywhere(filter, state);
       writeStateCacheFile();
@@ -961,6 +981,13 @@ async function refreshBrightnessAfterModeChange(filter, enabled, epoch) {
 
 async function changeHdrAndRefreshBrightness(settings, action) {
   const filter = settings.nameFilter || DEFAULT_FILTER;
+  const picture = pictureByFilter[filter];
+  if (picture) {
+    if (picture.commitTimer) clearTimeout(picture.commitTimer);
+    picture.commitTimer = null;
+    picture.pendingValue = null;
+    picture.lastSentValue = null;
+  }
   const predicted = action === 'on' ? true : action === 'off' ? false :
     !hdrByFilter[filter]?.enabled;
   const epoch = beginBrightnessModeChange(filter, predicted);
@@ -972,6 +999,11 @@ async function changeHdrAndRefreshBrightness(settings, action) {
     for (const context of Object.keys(plugin.hdr.data)) {
       if ((hdrSettings(context).nameFilter || DEFAULT_FILTER) === filter) paintHdrFromCache(context);
     }
+    // Use each mode's default preset. Standard restores its own SDR brightness,
+    // so refresh brightness only after the profile command has completed.
+    const standard = await runPictureMode({ action: 'default', nameFilter: filter });
+    if (!standard?.ok) throw new Error(standard?.error || 'The default picture profile could not be selected');
+    paintPictureEverywhere(filter, rememberPictureState(filter, standard));
     await refreshBrightnessAfterModeChange(filter, enabled, epoch);
     if (epoch === brightnessEpochByFilter[filter]) {
       const pictureContext = Object.keys(plugin.pictureMode?.data || {}).find(context => pictureFilter(context) === filter);
@@ -1406,7 +1438,7 @@ function ensurePictureState(filter) {
 function paintPictureFromCache(context) {
   const filter = pictureFilter(context);
   const state = pictureByFilter[filter];
-  if (!state || !Number.isFinite(state.value)) return false;
+  if (!state || (state.controlAvailable !== false && !Number.isFinite(state.value))) return false;
   applyPictureVisual(context, state.short || state.name || String(state.value));
   return true;
 }
@@ -1424,6 +1456,8 @@ function paintPictureEverywhere(filter, state) {
       name: state.name,
       hdrEnabled: state.hdrEnabled,
       modes: state.modes,
+      controlAvailable: state.controlAvailable,
+      unavailableReason: state.unavailableReason,
       pending: state.pendingValue != null || !!state.commitTimer || !!state.committing,
       settings: pictureSettings(context)
     });
@@ -1433,7 +1467,18 @@ function paintPictureEverywhere(filter, state) {
 // Mutate in place — never replace the object (avoids stale refs / lost modes).
 function rememberPictureState(filter, result, { keepPending = false } = {}) {
   const state = ensurePictureState(filter);
+  if (result.controlAvailable === false) {
+    if (state.commitTimer) clearTimeout(state.commitTimer);
+    Object.assign(state, { value: null, short: 'HDR OSD', name: 'Use monitor OSD',
+      hdrEnabled: !!result.hdrEnabled, modes: [], controlAvailable: false,
+      unavailableReason: result.unavailableReason, lastSentValue: null,
+      commitTimer: null, committing: false, pendingValue: null });
+    writeStateCacheFile();
+    return state;
+  }
   const modes = normalizePictureModes(result.modes) || state.modes;
+  state.controlAvailable = true;
+  state.unavailableReason = undefined;
   if (state.hdrEnabled !== !!result.hdrEnabled) state.lastSentValue = null;
 
   if (Number.isFinite(Number(result.value))) {
@@ -1478,11 +1523,11 @@ async function refreshPictureMode(context) {
       return null;
     }
     const prev = pictureByFilter[filter];
-    const nextValue = Number(result.value);
+    const nextValue = result.controlAvailable === false ? null : Number(result.value);
     const nextShort = result.short || result.label || String(result.value);
     const unchanged =
       prev &&
-      Number.isFinite(prev.value) &&
+      (prev.controlAvailable === false) === (result.controlAvailable === false) &&
       prev.value === nextValue &&
       String(prev.short || '') === String(nextShort) &&
       !!prev.hdrEnabled === !!result.hdrEnabled;
@@ -1525,6 +1570,13 @@ function unlockPictureCommit(filter) {
 async function commitPictureMode(filter) {
   const state = ensurePictureState(filter);
   if (state.committing) return;
+  if (state.controlAvailable === false) {
+    if (state.commitTimer) clearTimeout(state.commitTimer);
+    state.commitTimer = null;
+    state.pendingValue = null;
+    paintPictureEverywhere(filter, state);
+    return;
+  }
 
   const target =
     state.pendingValue != null ? Number(state.pendingValue) : Number(state.value);
@@ -1583,6 +1635,9 @@ async function commitPictureMode(filter) {
   } catch (error) {
     log.error('commitPictureMode', error);
     await refreshBrightnessAfterModeChange(filter, undefined, brightnessEpoch);
+    unlockPictureCommit(filter);
+    const context = Object.keys(plugin.pictureMode.data).find(key => pictureFilter(key) === filter);
+    if (context) await refreshPictureMode(context);
   } finally {
     const live = ensurePictureState(filter);
     unlockPictureCommit(filter);
@@ -1614,6 +1669,10 @@ async function ensurePictureModes(filter) {
   try {
     const list = await runPictureMode({ action: 'list', nameFilter: filter });
     if (list?.ok) {
+      if (list.controlAvailable === false) {
+        paintPictureEverywhere(filter, rememberPictureState(filter, list));
+        return null;
+      }
       const modes = normalizePictureModes(
         list.hdrEnabled ? list.hdrModes : list.sdrModes
       );
@@ -1642,6 +1701,7 @@ async function adjustPictureMode(context, ticks) {
   }
 
   const state = ensurePictureState(filter);
+  if (state.controlAvailable === false) { paintPictureEverywhere(filter, state); return; }
   let modes = normalizePictureModes(state.modes);
   if (!modes) {
     modes = await ensurePictureModes(filter);

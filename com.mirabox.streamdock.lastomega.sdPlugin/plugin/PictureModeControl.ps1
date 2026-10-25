@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Gigabyte MO32U2 Picture Mode (Graphics) via OSD Sidekick HID 0xE02C + VCP 0x14.
+  Gigabyte MO32U2 SDR Picture Mode via VCP 0xE7, with USB HID fallback.
+  HDR preset commands are not established; never send SDR mode IDs in HDR.
 
 .EXAMPLE
   .\PictureModeControl.ps1 -Action status -NameFilter MO32U2
@@ -11,7 +12,7 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('status', 'set', 'delta', 'list')]
+  [ValidateSet('status', 'set', 'delta', 'list', 'default')]
   [string]$Action,
 
   [string]$NameFilter = 'MO32U2',
@@ -46,15 +47,7 @@ $DefaultSdr = @(
   @{ id = 8; name = 'Custom'; short = 'CUST' },
   @{ id = 9; name = 'ECO'; short = 'ECO' }
 )
-$DefaultHdr = @(
-  @{ id = 0; name = 'Standard'; short = 'STD' },
-  @{ id = 1; name = 'Gaming'; short = 'GAME' },
-  @{ id = 5; name = 'Movie'; short = 'MOV' },
-  @{ id = 6; name = 'Reader'; short = 'READ' },
-  @{ id = 7; name = 'sRGB'; short = 'sRGB' },
-  @{ id = 8; name = 'Custom'; short = 'CUST' },
-  @{ id = 9; name = 'ECO'; short = 'ECO' }
-)
+$DefaultHdr = @()
 
 $cs = @'
 using System;
@@ -66,7 +59,8 @@ public static class GbPictureMode {
   public const int VendorId = 0x0BDA;
   public const int ProductId = 0x1100;
   public const ushort PropPicture = 0xE02C;
-  public const byte VcpPicture = 0x14;
+  // 0x14 is color temperature. Sidekick's HDMI library uses 0xE7 for profiles.
+  public const byte VcpPicture = 0xE7;
 
   private const uint DIGCF_PRESENT = 0x2;
   private const uint DIGCF_DEVICEINTERFACE = 0x10;
@@ -96,6 +90,22 @@ public static class GbPictureMode {
     public IntPtr hPhysicalMonitor;
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szPhysicalMonitorDescription;
   }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct RECT { public int left, top, right, bottom; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct MONITORINFOEX {
+    public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+  }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct DISPLAY_DEVICE {
+    public int cb;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+    public uint StateFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+  }
 
   [DllImport("hid.dll")] private static extern void HidD_GetHidGuid(out Guid HidGuid);
   [DllImport("hid.dll", SetLastError = true)] private static extern bool HidD_GetAttributes(IntPtr h, ref HIDD_ATTRIBUTES a);
@@ -120,6 +130,8 @@ public static class GbPictureMode {
 
   [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr a, IntPtr b, MonitorEnumProc c, IntPtr d);
   private delegate bool MonitorEnumProc(IntPtr h, IntPtr a, IntPtr b, IntPtr c);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX info);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool EnumDisplayDevices(string device, uint index, ref DISPLAY_DEVICE info, uint flags);
   [DllImport("dxva2.dll", SetLastError = true)] private static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr h, ref uint c);
   [DllImport("dxva2.dll", SetLastError = true)] private static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr h, uint c, [Out] PHYSICAL_MONITOR[] m);
   [DllImport("dxva2.dll", SetLastError = true)] private static extern bool DestroyPhysicalMonitors(uint c, [In] PHYSICAL_MONITOR[] m);
@@ -187,9 +199,14 @@ public static class GbPictureMode {
     bool done = false; bool result = false;
     EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMon, a, b, c) => {
       if (done) return true;
+      var info = new MONITORINFOEX(); info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+      if (!GetMonitorInfo(hMon, ref info)) return true;
+      var device = new DISPLAY_DEVICE(); device.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+      if (!EnumDisplayDevices(info.szDevice, 0, ref device, 0) || device.DeviceID == null ||
+          device.DeviceID.IndexOf("MONITOR\\GBT3217\\", StringComparison.OrdinalIgnoreCase) < 0) return true;
       uint count = 0;
       GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, ref count);
-      if (count == 0) return true;
+      if (count != 1) return true;
       var arr = new PHYSICAL_MONITOR[count];
       if (!GetPhysicalMonitorsFromHMONITOR(hMon, count, arr)) return true;
       try { result = fn(arr[0].hPhysicalMonitor); done = true; }
@@ -202,10 +219,15 @@ public static class GbPictureMode {
   public static int GetVcp() {
     int value = -1;
     WithPhysical(h => {
-      IntPtr t; uint cur = 0, max = 0;
-      if (!GetVCPFeatureAndVCPFeatureReply(h, VcpPicture, out t, out cur, out max)) return false;
-      value = (int)cur;
-      return true;
+      for (int attempt = 0; attempt < 3; attempt++) {
+        IntPtr t; uint cur = 0, max = 0;
+        if (GetVCPFeatureAndVCPFeatureReply(h, VcpPicture, out t, out cur, out max) && cur <= 9 && max >= cur) {
+          value = (int)cur;
+          return true;
+        }
+        if (attempt < 2) Thread.Sleep(150);
+      }
+      return false;
     });
     return value;
   }
@@ -226,74 +248,25 @@ public static class GbPictureMode {
     } finally { CloseHandle(h); }
   }
 
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)]
-  private static extern bool DLL_init();
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)]
-  private static extern int RTK_Get_MultiHID(ushort vendor_id, ushort product_id);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)]
-  private static extern int RTK_Open_mutiHID(int mutiHIDindex);
-  [StructLayout(LayoutKind.Sequential)]
-  private struct Monitor_Handle {
-    public int index; public IntPtr VIA; public IntPtr MTK; public int Realtek; public int Genesys; public IntPtr MS_Handle;
-  }
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetStandard_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetFPS_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetRTS_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetMovie_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetReader_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetsRGB_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetCustom1_GBT(Monitor_Handle m);
-  [DllImport("RTKCmd_x64.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void SetNumber(Monitor_Handle m, byte number);
-
-  public static bool SetRtk(int value) {
-    string sidekick = @"C:\Program Files\GIGABYTE\Control Center\Lib\Sidekick";
-    string oldDir = Environment.CurrentDirectory;
-    string oldPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-    try {
-      Environment.CurrentDirectory = sidekick;
-      Environment.SetEnvironmentVariable("PATH", sidekick + ";" + oldPath);
-      if (!DLL_init()) return false;
-      int n = RTK_Get_MultiHID(0x0BDA, 0x1100);
-      if (n <= 0) return false;
-      int h = RTK_Open_mutiHID(0);
-      var mh = new Monitor_Handle();
-      mh.Realtek = h;
-      // Prefer explicit presets when known; always also SetNumber(value).
-      switch (value) {
-        case 0: SetStandard_GBT(mh); break;
-        case 1: SetFPS_GBT(mh); break;
-        case 2: SetRTS_GBT(mh); break; // MOBA / RTS family
-        case 5: SetMovie_GBT(mh); break;
-        case 6: SetReader_GBT(mh); break;
-        case 7: SetsRGB_GBT(mh); break;
-        case 8: SetCustom1_GBT(mh); break;
-      }
-      SetNumber(mh, (byte)value);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      Environment.CurrentDirectory = oldDir;
-      Environment.SetEnvironmentVariable("PATH", oldPath);
-    }
-  }
-
   public static string SetBoth(int value) {
-    bool hidOk = false, vcpOk = false, rtkOk = false;
+    bool hidOk = false, vcpOk = false;
     Exception hidErr = null;
-    try { hidOk = SetHid(value); } catch (Exception ex) { hidErr = ex; }
     try { vcpOk = SetVcp(value); } catch { }
-    try { rtkOk = SetRtk(value); } catch { }
-    Thread.Sleep(150);
-    int read = GetVcp();
-    if (!hidOk && !vcpOk && !rtkOk) {
+    if (!vcpOk) { try { hidOk = SetHid(value); } catch (Exception ex) { hidErr = ex; } }
+    if (!hidOk && !vcpOk) {
       throw new Exception(hidErr != null ? hidErr.Message : "picture mode set failed");
     }
-    // Trust requested value for UI: VCP echo is often remapped on this panel.
+    int read = -1;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      Thread.Sleep(150);
+      read = GetVcp();
+      if (read == value) break;
+    }
+    if (read != value) throw new Exception("Picture profile change was not confirmed by the monitor.");
     return "{\"ok\":true,\"value\":" + value + ",\"read\":" + read +
            ",\"hidOk\":" + (hidOk ? "true" : "false") +
            ",\"vcpOk\":" + (vcpOk ? "true" : "false") +
-           ",\"rtkOk\":" + (rtkOk ? "true" : "false") + "}";
+           ",\"rtkOk\":false}";
   }
 }
 '@
@@ -347,18 +320,6 @@ function Convert-SidekickList($list) {
   return $out
 }
 
-function Get-HdrPictureModeType([int]$sdrType) {
-  # Sidekick keeps a compact alternate table (type 9) for OLED/HDR-style menus
-  # when the SDR table is the MOBA/Racing family (2/4/8/10).
-  switch ($sdrType) {
-    2 { return 9 }
-    4 { return 9 }
-    8 { return 9 }
-    10 { return 9 }
-    default { return $sdrType }
-  }
-}
-
 function Import-SidekickModes([string]$model, [switch]$Force) {
   $modelKey = if ($model) { $model } else { 'MO32U2' }
 
@@ -366,14 +327,12 @@ function Import-SidekickModes([string]$model, [switch]$Force) {
     try {
       $cached = Get-Content -LiteralPath $ModesCacheFile -Raw -Encoding UTF8 | ConvertFrom-Json
       $ageMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [int64]$cached.updatedAt
-      if ($cached.model -eq $modelKey -and $cached.sdrModes -and $cached.hdrModes -and $ageMs -lt 7 * 24 * 3600 * 1000) {
+      if ($cached.catalogVersion -eq 2 -and $cached.model -eq $modelKey -and $cached.sdrModes -and $ageMs -lt 7 * 24 * 3600 * 1000) {
         $sdr = @($cached.sdrModes | ForEach-Object {
           @{ id = [int]$_.id; name = [string]$_.name; short = [string]$(if ($_.short) { $_.short } else { Get-ShortLabel $_.name }) }
         })
-        $hdr = @($cached.hdrModes | ForEach-Object {
-          @{ id = [int]$_.id; name = [string]$_.name; short = [string]$(if ($_.short) { $_.short } else { Get-ShortLabel $_.name }) }
-        })
-        if ($sdr.Count -gt 0 -and $hdr.Count -gt 0) {
+        $hdr = @()
+        if ($sdr.Count -gt 0) {
           return @{
             ok = $true
             source = 'cache'
@@ -411,7 +370,7 @@ function Import-SidekickModes([string]$model, [switch]$Force) {
 
     $oi = [Activator]::CreateInstance([OSDSidekick.OSD_Interface])
     $sdrType = [int]$oi.PictureModeType($modelKey)
-    $hdrType = Get-HdrPictureModeType $sdrType
+    $hdrType = -1 # FillPicture tables describe SDR families, not HDR presets.
 
     $amType = [OSDSidekick.OSD_Interface].GetNestedType('All_Monitor')
     $fill = [OSDSidekick.OSD_Interface].GetMethod('FillPicture')
@@ -432,14 +391,13 @@ function Import-SidekickModes([string]$model, [switch]$Force) {
     }
 
     $sdrRaw = & $fillOne $sdrType
-    $hdrRaw = if ($hdrType -ne $sdrType) { & $fillOne $hdrType } else { $sdrRaw }
     $sdrModes = @(Convert-SidekickList $sdrRaw)
-    $hdrModes = @(Convert-SidekickList $hdrRaw)
+    $hdrModes = @()
     if ($sdrModes.Count -eq 0) { $sdrModes = $DefaultSdr }
-    if ($hdrModes.Count -eq 0) { $hdrModes = $sdrModes }
 
     $payload = @{
       model = $modelKey
+      catalogVersion = 2
       sdrType = $sdrType
       hdrType = $hdrType
       sdrModes = @($sdrModes | ForEach-Object { [ordered]@{ id = $_.id; name = $_.name; short = $_.short } })
@@ -533,6 +491,7 @@ function Build-Result($modes, $value, $hdrEnabled, $extra = @{}) {
   $mode = $modes[$idx]
   $obj = [ordered]@{
     ok = $true
+    controlAvailable = $true
     hdrEnabled = [bool]$hdrEnabled
     value = [int]$value
     index = [int]$idx
@@ -548,15 +507,31 @@ function Build-Result($modes, $value, $hdrEnabled, $extra = @{}) {
 }
 
 try {
+  $hdrEnabled = if ($null -ne $KnownHdrEnabled) { [bool]$KnownHdrEnabled } else { Get-HdrEnabled }
+  if ($hdrEnabled) {
+    $reason = 'Use the monitor OSD for HDR presets. Sidekick SDR profile IDs do not select the MO32U2 HDR presets.'
+    if ($Action -in @('set', 'delta')) { throw $reason }
+    [ordered]@{
+      ok = $true; controlAvailable = $false; unavailableReason = $reason
+      hdrEnabled = $true; value = $null; index = -1; name = 'Use monitor OSD'; short = 'HDR OSD'; label = 'HDR OSD'
+      modes = @(); hdrModes = @(); sdrModes = $DefaultSdr; source = 'unsupported-hdr'
+      # The tested monitor enters normal HDR on an SDR -> HDR transition.
+      # E7 writes 0/1 did not establish independent HDR preset addressing.
+      # The caller has just changed HDR mode; do not send an ignored SDR ID.
+      defaultProfileApplied = $false
+      defaultProfileSource = $(if ($Action -eq 'default') { 'monitor-on-hdr-entry' } else { $null })
+    } | ConvertTo-Json -Compress -Depth 5
+    return
+  }
   $forceReload = ($Action -eq 'list')
   $loaded = Import-SidekickModes -model $NameFilter -Force:$forceReload
   $sdrOverride = Convert-ModeList $SdrModesJson $null
   $hdrOverride = Convert-ModeList $HdrModesJson $null
   $sdrModes = if ($sdrOverride) { $sdrOverride } else { @($loaded.sdrModes) }
   $hdrModes = if ($hdrOverride) { $hdrOverride } else { @($loaded.hdrModes) }
-  $hdrEnabled = if ($null -ne $KnownHdrEnabled) { [bool]$KnownHdrEnabled } else { Get-HdrEnabled }
   $modes = if ($hdrEnabled) { $hdrModes } else { $sdrModes }
   $local = Read-LocalState
+  if ($Action -eq 'default') { $Action = 'set'; $Value = 0 }
 
   switch ($Action) {
     'list' {
@@ -573,11 +548,10 @@ try {
       } | ConvertTo-Json -Compress -Depth 6
     }
     'status' {
-      $cached = if ($hdrEnabled) { [int]$local.hdrValue } else { [int]$local.sdrValue }
-      $value = if ((Find-Index $modes $cached) -ge 0) { $cached }
-               else { [int]$modes[0].id }
+      $value = [GbPictureMode]::GetVcp()
+      if ((Find-Index $modes $value) -lt 0) { throw 'Active SDR picture profile could not be read from the monitor.' }
       Build-Result $modes $value $hdrEnabled @{
-        source = 'cache'
+        source = 'ddc-e7'
         model = $loaded.model
         sdrType = $loaded.sdrType
         hdrType = $loaded.hdrType
@@ -599,10 +573,8 @@ try {
     }
     'delta' {
       $read = [GbPictureMode]::GetVcp()
-      $cached = if ($hdrEnabled) { [int]$local.hdrValue } else { [int]$local.sdrValue }
-      $current = if ((Find-Index $modes $cached) -ge 0) { $cached }
-                 elseif ($read -ge 0 -and (Find-Index $modes $read) -ge 0) { $read }
-                 else { [int]$modes[0].id }
+      if ((Find-Index $modes $read) -lt 0) { throw 'Active SDR picture profile could not be read from the monitor.' }
+      $current = $read
       $idx = Find-Index $modes $current
       if ($idx -lt 0) { $idx = 0 }
       $n = $modes.Count

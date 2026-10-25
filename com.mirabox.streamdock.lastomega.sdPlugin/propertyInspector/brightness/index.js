@@ -90,6 +90,14 @@ function renderStatus(display) {
     $dom.statusText.textContent = '—';
     return;
   }
+  const available = display.controlAvailable !== false;
+  $dom.btnDown.disabled = !available;
+  $dom.btnUp.disabled = !available;
+  $dom.stepHdr.disabled = !available;
+  if (!available) {
+    $dom.statusText.textContent = 'Яркость HDR — в меню монитора (OSD). Нажатие крутилки переключает HDR/SDR.';
+    return;
+  }
 
   const mode = display.hdrEnabled ? 'HDR' : 'SDR';
   const value = display.brightnessPercent;

@@ -21,6 +21,14 @@ function renderStatus(payload) {
     $dom.statusText.textContent = payload?.error || 'Error';
     return;
   }
+  const available = payload.controlAvailable !== false;
+  $dom.btnPrev.disabled = !available;
+  $dom.btnNext.disabled = !available;
+  if (!available) {
+    $dom.statusText.textContent = 'HDR-профили — в меню монитора (OSD).';
+    $dom.modesText.textContent = 'Профили SDR доступны после выключения HDR.';
+    return;
+  }
   const hdr = payload.hdrEnabled ? 'HDR' : 'SDR';
   const src = payload.source ? ` [${payload.source}]` : '';
   $dom.statusText.textContent = `${hdr}: ${payload.name || payload.short || '—'} (${payload.value})${src}`;
