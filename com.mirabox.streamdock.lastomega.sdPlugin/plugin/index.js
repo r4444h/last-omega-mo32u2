@@ -13,8 +13,12 @@ const STATE_CACHE_FILE = path.join(__dirname, 'ui-state-cache.json');
 const DEFAULT_FILTER = 'MO32U2';
 const timers = {};
 const brightnessByFilter = {}; // shared live state per monitor filter
+const monitorCommandQueues = {};
+const brightnessEpochByFilter = {};
+const brightnessTransitions = {};
 const hdrByFilter = {}; // shared HDR on/off cache per monitor filter
 const crosshairByFilter = {}; // shared crosshair on/off cache
+let crosshairCommandQueue = Promise.resolve();
 const pictureByFilter = {}; // shared picture-mode state per monitor
 const refreshRateByFilter = {}; // shared Hz cache per monitor
 const controllerByContext = {}; // Keypad | Knob | Encoder
@@ -26,8 +30,6 @@ const PICTURE_HOLD_MS = 0;
 const REFRESH_RATE_POLL_DEFAULT = 60; // rare — Hz rarely changes
 const SDR_MIN = 0;
 const SDR_MAX = 100;
-const HDR_MIN_DEFAULT = 80;
-const HDR_MAX_DEFAULT = 480;
 const VALUE_EPS = 0.001;
 
 function readStateCacheFile() {
@@ -54,7 +56,7 @@ function writeStateCacheFile() {
       brightness[filter] = {
         value: state.value,
         hdrEnabled: !!state.hdrEnabled,
-        unit: state.unit || (state.hdrEnabled ? 'nits' : 'percent'),
+        unit: 'percent',
         lastSentValue: state.lastSentValue
       };
     }
@@ -122,12 +124,13 @@ function hydrateStateCache() {
   const disk = readStateCacheFile();
   for (const [filter, cached] of Object.entries(disk.brightness)) {
     if (brightnessByFilter[filter]) continue;
+    if (cached.unit !== 'percent') continue;
     const value = Number(cached.value);
     if (!Number.isFinite(value)) continue;
     brightnessByFilter[filter] = {
       value,
       hdrEnabled: !!cached.hdrEnabled,
-      unit: cached.unit || (cached.hdrEnabled ? 'nits' : 'percent'),
+      unit: 'percent',
       commitTimer: null,
       committing: false,
       loading: false,
@@ -187,7 +190,7 @@ function hydrateStateCache() {
 hydrateStateCache();
 
 
-function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr }) {
+function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr, expectedHdrEnabled }) {
   const args = [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -211,6 +214,9 @@ function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr 
   if (typeof value === 'number' && value >= 0) {
     args.push('-Value', String(value));
   }
+  if (typeof expectedHdrEnabled === 'boolean') {
+    args.push('-ExpectedHdr', expectedHdrEnabled ? 'on' : 'off');
+  }
 
   if (typeof stepSdr === 'number' && stepSdr > 0) {
     args.push('-StepSdr', String(Math.round(stepSdr)));
@@ -227,8 +233,12 @@ function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr 
       { windowsHide: true, timeout: 15000, encoding: 'utf8' },
       (error, stdout, stderr) => {
         if (error) {
-          log.error(path.basename(scriptPath), 'failed', error.message, stderr);
-          reject(new Error(stderr || error.message));
+          let message = stderr || error.message;
+          try {
+            message = JSON.parse(String(stdout || '').trim().split(/\r?\n/).pop()).error || message;
+          } catch (_) {}
+          log.error(path.basename(scriptPath), 'failed', message);
+          reject(new Error(message));
           return;
         }
 
@@ -250,19 +260,32 @@ function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr 
   });
 }
 
+function queueMonitorCommand(options, command) {
+  const filter = options.nameFilter || DEFAULT_FILTER;
+  const pending = (monitorCommandQueues[filter] || Promise.resolve()).then(command);
+  monitorCommandQueues[filter] = pending.catch(() => {});
+  return pending;
+}
+
 function runHdr(opts) {
-  return runPs(HDR_SCRIPT, opts);
+  return queueMonitorCommand(opts, () => runPs(HDR_SCRIPT, opts));
 }
 
 function runBrightness(opts) {
-  return runPs(BRIGHTNESS_SCRIPT, opts);
+  return queueMonitorCommand(opts, () => runPs(BRIGHTNESS_SCRIPT, opts));
 }
 
 function runRefreshRate(opts) {
   return runPs(REFRESH_SCRIPT, opts);
 }
 
-function runCrosshair({ action, style }) {
+function runCrosshair(options) {
+  const pending = crosshairCommandQueue.then(() => executeCrosshair(options));
+  crosshairCommandQueue = pending.catch(() => {});
+  return pending;
+}
+
+function executeCrosshair({ action, style }) {
   const args = [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -283,12 +306,6 @@ function runCrosshair({ action, style }) {
       args,
       { windowsHide: true, timeout: 10000, encoding: 'utf8' },
       (error, stdout, stderr) => {
-        if (error) {
-          log.error('CrosshairControl.ps1', 'failed', error.message, stderr);
-          reject(new Error(stderr || error.message));
-          return;
-        }
-
         const text = String(stdout || '').trim();
         const jsonLine = text
           .split(/\r?\n/)
@@ -296,8 +313,23 @@ function runCrosshair({ action, style }) {
           .filter(Boolean)
           .pop();
 
+        if (error) {
+          let message = stderr || error.message;
+          try {
+            message = JSON.parse(jsonLine).error || message;
+          } catch (_) {}
+          log.error('CrosshairControl.ps1', 'failed', message);
+          reject(new Error(message));
+          return;
+        }
+
         try {
-          resolve(JSON.parse(jsonLine));
+          const result = JSON.parse(jsonLine);
+          if (!result?.ok) {
+            reject(new Error(result?.error || 'AIM command failed'));
+            return;
+          }
+          resolve(result);
         } catch (parseError) {
           log.error('CrosshairControl.ps1', 'bad JSON', text);
           reject(parseError);
@@ -377,7 +409,9 @@ function keyImage(label) {
 
 function brightnessKeyImage(label) {
   const text = String(label);
-  const safe = text
+  const parts = text.match(/^(HDR|SDR) (.+)$/);
+  const mode = parts?.[1] || '';
+  const safe = (parts?.[2] || text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
@@ -386,6 +420,8 @@ function brightnessKeyImage(label) {
   // Small white sun icon + brightness value, centered as a group
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+  <text x="72" y="28" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="16" font-weight="600" fill="#FFFFFF">${mode}</text>
   <g transform="translate(18 52)">
     <circle cx="18" cy="18" r="7" fill="none" stroke="#FFFFFF" stroke-width="2.5"/>
     <g stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round">
@@ -497,30 +533,20 @@ function brightnessSettings(context) {
     {
       nameFilter: DEFAULT_FILTER,
       stepSdr: 1,
-      stepHdr: 10,
-      pollSec: 3,
-      hdrMin: HDR_MIN_DEFAULT,
-      hdrMax: HDR_MAX_DEFAULT
+      stepHdr: 1,
+      pollSec: 3
     },
     plugin.brightness.data[context] || {}
   );
 
   raw.stepSdr = normalizeStepValue(raw.stepSdr, 1);
-  raw.stepHdr = normalizeStepValue(raw.stepHdr, 10);
+  // Old HDR steps were nits; they cannot be reused as monitor percentage steps.
+  raw.stepHdr = raw.controlVersion === 2 ? normalizeStepValue(raw.stepHdr, 1) : 1;
+  raw.controlVersion = 2;
   raw.pollSec = Math.max(1, Math.min(3600, Math.round(Number(raw.pollSec) || 3)));
 
-  let hdrMin = Number(raw.hdrMin);
-  let hdrMax = Number(raw.hdrMax);
-  if (!Number.isFinite(hdrMin)) hdrMin = HDR_MIN_DEFAULT;
-  if (!Number.isFinite(hdrMax)) hdrMax = HDR_MAX_DEFAULT;
-  if (hdrMin < 0) hdrMin = 0;
-  if (hdrMax < hdrMin) {
-    const tmp = hdrMin;
-    hdrMin = hdrMax;
-    hdrMax = tmp;
-  }
-  raw.hdrMin = hdrMin;
-  raw.hdrMax = hdrMax;
+  delete raw.hdrMin;
+  delete raw.hdrMax;
   return raw;
 }
 
@@ -643,11 +669,15 @@ async function refreshHdr(context) {
       action: 'status',
       nameFilter: filter
     });
+    if (!result?.ok) throw new Error(result?.error || 'HDR status unavailable');
     const display = result.display || {};
     const enabled = !!display.hdrEnabled;
     const label = enabled ? 'HDR ON' : 'HDR OFF';
     const prev = hdrByFilter[filter];
     const unchanged = prev && !!prev.enabled === enabled && prev.label === label;
+    const brightness = brightnessByFilter[filter];
+    const modeChanged = (prev && !!prev.enabled !== enabled) ||
+      (brightness && !!brightness.hdrEnabled !== enabled);
     rememberHdrState(filter, enabled);
     if (!unchanged) {
       applyKeyVisual(context, label);
@@ -661,6 +691,9 @@ async function refreshHdr(context) {
       display,
       settings
     });
+    if (modeChanged && !brightnessTransitions[filter]) {
+      await refreshBrightnessAfterHdrChange(filter, enabled);
+    }
     return display;
   } catch (error) {
     log.error('refreshHdr', error);
@@ -680,21 +713,12 @@ async function refreshHdr(context) {
 function brightnessLabel(value, hdrEnabled) {
   const rounded = Math.round(Number(value) * 10) / 10;
   const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return hdrEnabled ? `${text}n` : `${text}%`;
-}
-
-function brightnessRange(settings, hdrEnabled) {
-  if (hdrEnabled) {
-    return {
-      min: Number(settings.hdrMin ?? HDR_MIN_DEFAULT),
-      max: Number(settings.hdrMax ?? HDR_MAX_DEFAULT)
-    };
-  }
-  return { min: SDR_MIN, max: SDR_MAX };
+  return `${hdrEnabled ? 'HDR' : 'SDR'} ${text}%`;
 }
 
 function clampBrightnessValue(value, settings, hdrEnabled) {
-  const { min, max } = brightnessRange(settings, hdrEnabled);
+  const min = SDR_MIN;
+  const max = SDR_MAX;
   const n = Number(value);
   if (!Number.isFinite(n)) return min;
   if (n < min) return min;
@@ -710,9 +734,7 @@ function settingsForFilter(filter) {
   let settings = {
     nameFilter: filter,
     stepSdr: 1,
-    stepHdr: 10,
-    hdrMin: HDR_MIN_DEFAULT,
-    hdrMax: HDR_MAX_DEFAULT
+    stepHdr: 1
   };
   forEachBrightnessContext(filter, (_context, ctxSettings) => {
     settings = ctxSettings;
@@ -745,8 +767,7 @@ function paintBrightnessEverywhere(filter, state) {
       display: {
         name: filter,
         hdrEnabled: state.hdrEnabled,
-        brightnessPercent: state.hdrEnabled ? undefined : state.value,
-        sdrWhiteNits: state.hdrEnabled ? state.value : undefined,
+        brightnessPercent: state.value,
         label,
         value: state.value,
         unit: state.unit
@@ -761,19 +782,20 @@ function storeBrightnessFromDisplay(filter, display, keepTimers = true) {
   const prev = brightnessByFilter[filter] || {};
   const settings = settingsForFilter(filter);
   const hdrEnabled = !!display.hdrEnabled;
-  const value = hdrEnabled
-    ? Number(display.sdrWhiteNits ?? display.value ?? settings.hdrMin)
-    : Number(display.brightnessPercent ?? display.value ?? 0);
+  if (display.brightnessPercent == null) return null;
+  const value = Number(display.brightnessPercent);
+  if (!Number.isFinite(value)) return null;
 
   const state = {
     value: clampBrightnessValue(value, settings, hdrEnabled),
     hdrEnabled,
-    unit: hdrEnabled ? 'nits' : 'percent',
+    unit: 'percent',
     commitTimer: keepTimers ? prev.commitTimer || null : null,
     committing: keepTimers ? !!prev.committing : false,
     loading: false,
     pendingTicks: 0,
-    lastSentValue: prev.lastSentValue
+    lastSentValue: prev.hdrEnabled === hdrEnabled && prev.unit === 'percent'
+      ? prev.lastSentValue : undefined
   };
   brightnessByFilter[filter] = state;
   return state;
@@ -794,7 +816,9 @@ function isBrightnessBusy(filter) {
 
 async function applyBrightnessResult(context, result, settings, { fromCommit = false } = {}) {
   const filter = settings.nameFilter || DEFAULT_FILTER;
-  const display = result?.display || {};
+  if (!result?.ok) throw new Error(result?.error || 'Monitor brightness read failed');
+  const display = result.display || {};
+  if (display.brightnessPercent == null) throw new Error('Monitor brightness is unavailable');
 
   if (!fromCommit && isBrightnessBusy(filter)) {
     return display;
@@ -820,6 +844,7 @@ async function applyBrightnessResult(context, result, settings, { fromCommit = f
 
 function paintBrightnessFromCache(context) {
   const filter = monitorFilter(context);
+  if (brightnessTransitions[filter]) return false;
   const state = brightnessByFilter[filter];
   if (!state || !Number.isFinite(state.value)) return false;
   applyBrightnessVisual(context, brightnessLabel(state.value, state.hdrEnabled));
@@ -830,6 +855,8 @@ function paintBrightnessFromCache(context) {
 async function refreshBrightness(context) {
   const settings = brightnessSettings(context);
   const filter = settings.nameFilter || DEFAULT_FILTER;
+  if (brightnessTransitions[filter]) return null;
+  const epoch = brightnessEpochByFilter[filter] || 0;
   if (isBrightnessBusy(filter)) {
     paintBrightnessFromCache(context);
     return null;
@@ -840,10 +867,12 @@ async function refreshBrightness(context) {
       action: 'status',
       nameFilter: filter
     });
+    if (epoch !== (brightnessEpochByFilter[filter] || 0)) return null;
     await applyBrightnessResult(context, result, settings);
     writeStateCacheFile();
     return result.display;
   } catch (error) {
+    if (epoch !== (brightnessEpochByFilter[filter] || 0)) return null;
     log.error('refreshBrightness', error);
     if (!paintBrightnessFromCache(context)) {
       applyBrightnessVisual(context, 'ERR');
@@ -864,6 +893,8 @@ async function commitBrightness(filter) {
 
   state.commitTimer = null;
   const settings = settingsForFilter(filter);
+  const epoch = brightnessEpochByFilter[filter] || 0;
+  if (brightnessTransitions[filter]) return;
   const targetValue = clampBrightnessValue(state.value, settings, state.hdrEnabled);
   state.value = targetValue;
 
@@ -880,8 +911,11 @@ async function commitBrightness(filter) {
     const result = await runBrightness({
       action: 'set',
       nameFilter: filter,
-      value: targetValue
+      value: targetValue,
+      expectedHdrEnabled: state.hdrEnabled
     });
+    if (epoch !== (brightnessEpochByFilter[filter] || 0)) return;
+    if (!result?.ok) throw new Error(result?.error || 'Monitor brightness write failed');
 
     const latest = brightnessByFilter[filter];
     if (latest && !valuesAlmostEqual(latest.value, targetValue)) {
@@ -908,8 +942,10 @@ async function commitBrightness(filter) {
     }
   } catch (error) {
     log.error('commitBrightness', error);
-    if (brightnessByFilter[filter]) {
+    if (epoch === (brightnessEpochByFilter[filter] || 0) && brightnessByFilter[filter]) {
       brightnessByFilter[filter].committing = false;
+      const context = Object.keys(plugin.brightness.data).find(key => monitorFilter(key) === filter);
+      if (context) await refreshBrightness(context);
     }
   }
 }
@@ -944,6 +980,7 @@ function applyBrightnessDelta(filter, context, deltaTicks) {
 }
 
 async function loadBrightnessBaseline(filter, context) {
+  const epoch = brightnessEpochByFilter[filter] || 0;
   const existing = brightnessByFilter[filter];
   if (existing?.loading) return;
 
@@ -966,9 +1003,11 @@ async function loadBrightnessBaseline(filter, context) {
       action: 'status',
       nameFilter: filter
     });
+    if (epoch !== (brightnessEpochByFilter[filter] || 0)) return;
+    if (!result?.ok) throw new Error(result?.error || 'Monitor brightness is unavailable');
     const pendingTicks = brightnessByFilter[filter]?.pendingTicks || 0;
     const state = storeBrightnessFromDisplay(filter, result.display, false);
-    if (!state) return;
+    if (!state) throw new Error('Monitor brightness is unavailable');
 
     state.lastSentValue = state.value;
 
@@ -979,7 +1018,7 @@ async function loadBrightnessBaseline(filter, context) {
     }
   } catch (error) {
     log.error('loadBrightnessBaseline', error);
-    if (brightnessByFilter[filter]) {
+    if (epoch === (brightnessEpochByFilter[filter] || 0) && brightnessByFilter[filter]) {
       brightnessByFilter[filter].loading = false;
     }
   }
@@ -995,6 +1034,11 @@ function adjustBrightness(context, ticks) {
   }
 
   const shared = brightnessByFilter[filter];
+
+  if (brightnessTransitions[filter]) {
+    if (shared) shared.pendingTicks = (shared.pendingTicks || 0) + deltaTicks;
+    return;
+  }
 
   // No baseline yet: queue ticks and load once in background (don't block UI).
   if (!shared || !Number.isFinite(shared.value) || shared.loading) {
@@ -1020,6 +1064,89 @@ function adjustBrightness(context, ticks) {
 
   // Fast path: update counter immediately; send only if value actually changed after clamp.
   applyBrightnessDelta(filter, context, deltaTicks);
+}
+
+function beginBrightnessModeChange(filter, enabled) {
+  clearBrightnessCommit(filter);
+  const epoch = (brightnessEpochByFilter[filter] || 0) + 1;
+  brightnessEpochByFilter[filter] = epoch;
+  brightnessTransitions[filter] = epoch;
+  const state = brightnessByFilter[filter];
+  if (state) {
+    state.loading = true;
+    state.pendingTicks = 0;
+    state.lastSentValue = undefined;
+  }
+  if (typeof enabled === 'boolean') {
+    forEachBrightnessContext(filter, context => {
+      applyBrightnessVisual(context, `${enabled ? 'HDR' : 'SDR'} ...`);
+    });
+  }
+  return epoch;
+}
+
+async function refreshBrightnessAfterHdrChange(filter, enabled, epoch) {
+  if (epoch == null) epoch = beginBrightnessModeChange(filter, enabled);
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (epoch !== brightnessEpochByFilter[filter]) return null;
+    try {
+      const result = await runBrightness({ action: 'status', nameFilter: filter });
+      if (epoch !== brightnessEpochByFilter[filter]) return null;
+      if (!result?.ok || result.display?.brightnessPercent == null) {
+        throw new Error(result?.error || 'Monitor brightness is unavailable after HDR change');
+      }
+      if (typeof enabled === 'boolean' && !!result.display.hdrEnabled !== enabled) {
+        throw new Error('Waiting for the monitor HDR mode to settle');
+      }
+      const pendingTicks = brightnessByFilter[filter]?.pendingTicks || 0;
+      const state = storeBrightnessFromDisplay(filter, result.display, false);
+      if (!state) throw new Error('Invalid monitor brightness');
+      state.lastSentValue = state.value;
+      delete brightnessTransitions[filter];
+      paintBrightnessEverywhere(filter, state);
+      writeStateCacheFile();
+      const context = Object.keys(plugin.brightness.data).find(key => monitorFilter(key) === filter);
+      if (pendingTicks && context) applyBrightnessDelta(filter, context, pendingTicks);
+      return result.display;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+    }
+  }
+  if (epoch === brightnessEpochByFilter[filter]) {
+    delete brightnessTransitions[filter];
+    const state = brightnessByFilter[filter];
+    if (state) { state.loading = false; state.committing = false; state.value = NaN; }
+    forEachBrightnessContext(filter, (context, settings) => {
+      applyBrightnessVisual(context, 'ERR');
+      plugin.sendToPropertyInspector({ type: 'brightnessStatus', ok: false,
+        error: String(lastError?.message || lastError), settings });
+    });
+  }
+  log.error('brightness after HDR change', lastError);
+  return null;
+}
+
+async function changeHdrAndRefreshBrightness(settings, action) {
+  const filter = settings.nameFilter || DEFAULT_FILTER;
+  const predicted = action === 'on' ? true : action === 'off' ? false :
+    !hdrByFilter[filter]?.enabled;
+  const epoch = beginBrightnessModeChange(filter, predicted);
+  try {
+    const result = await runHdr({ action, nameFilter: filter });
+    if (!result?.ok) throw new Error(result?.error || 'HDR change failed');
+    const enabled = !!result.display?.hdrEnabled;
+    rememberHdrState(filter, enabled);
+    for (const context of Object.keys(plugin.hdr.data)) {
+      if ((hdrSettings(context).nameFilter || DEFAULT_FILTER) === filter) paintHdrFromCache(context);
+    }
+    await refreshBrightnessAfterHdrChange(filter, enabled, epoch);
+    return result;
+  } catch (error) {
+    await refreshBrightnessAfterHdrChange(filter, undefined, epoch);
+    throw error;
+  }
 }
 
 plugin.hdr = new Actions({
@@ -1082,10 +1209,7 @@ plugin.hdr = new Actions({
     const action = mode === 'on' ? 'on' : mode === 'off' ? 'off' : 'toggle';
 
     try {
-      const result = await runHdr({
-        action,
-        nameFilter: settings.nameFilter || DEFAULT_FILTER
-      });
+      const result = await changeHdrAndRefreshBrightness(settings, action);
 
       if (!result.ok) return;
 
@@ -1127,10 +1251,7 @@ plugin.hdr = new Actions({
       const settings = hdrSettings(context);
       const action = payload.action || settings.mode || 'toggle';
       try {
-        await runHdr({
-          action,
-          nameFilter: settings.nameFilter || DEFAULT_FILTER
-        });
+        await changeHdrAndRefreshBrightness(settings, action);
         await refreshHdr(context);
       } catch (error) {
         log.error('sendToPlugin HDR run', error);
@@ -1143,14 +1264,16 @@ plugin.brightness = new Actions({
   default: {
     nameFilter: DEFAULT_FILTER,
     stepSdr: 1,
-    stepHdr: 10,
-    pollSec: 3,
-    hdrMin: 80,
-    hdrMax: 480
+    stepHdr: 1,
+    pollSec: 3
   },
 
   async _willAppear({ context, payload }) {
     rememberController(context, payload);
+    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2;
+    const settings = brightnessSettings(context);
+    plugin.brightness.data[context] = settings;
+    if (needsMigration) plugin.setSettings(context, settings);
     // Instant paint from cache so scene switches don't blank Key/Knob.
     paintBrightnessFromCache(context);
     restartBrightnessPoll(context);
@@ -1168,7 +1291,9 @@ plugin.brightness = new Actions({
   },
 
   async _didReceiveSettings({ context }) {
+    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2;
     plugin.brightness.data[context] = brightnessSettings(context);
+    if (needsMigration) plugin.setSettings(context, plugin.brightness.data[context]);
     paintBrightnessFromCache(context);
     restartBrightnessPoll(context);
   },
@@ -1233,25 +1358,14 @@ plugin.brightness = new Actions({
         stepSdr: payload.stepSdr,
         stepHdr: payload.stepHdr,
         pollSec: payload.pollSec,
-        hdrMin: payload.hdrMin,
-        hdrMax: payload.hdrMax
+        controlVersion: 2
       };
       const normalized = brightnessSettings(context);
       plugin.brightness.data[context] = normalized;
       plugin.setSettings(context, normalized);
       restartBrightnessPoll(context);
 
-      // Re-clamp current live value to new HDR bounds if needed.
-      const filter = normalized.nameFilter || DEFAULT_FILTER;
-      const live = brightnessByFilter[filter];
-      if (live && Number.isFinite(live.value)) {
-        const clamped = clampBrightnessValue(live.value, normalized, live.hdrEnabled);
-        if (!valuesAlmostEqual(live.value, clamped)) {
-          live.value = clamped;
-          paintBrightnessEverywhere(filter, live);
-          scheduleBrightnessCommit(filter);
-        }
-      }
+      refreshBrightness(context).catch(() => {});
     }
   }
 });
@@ -1302,8 +1416,7 @@ plugin.crosshair = new Actions({
       });
 
       if (!result.ok) {
-        applyKeyVisual(context, 'AIM ERR');
-        return;
+        throw new Error(result.error || 'AIM command failed');
       }
 
       const enabled = !!result.enabled;
@@ -1324,6 +1437,12 @@ plugin.crosshair = new Actions({
     } catch (error) {
       log.error('keyUp crosshair', error);
       applyKeyVisual(context, 'AIM ERR');
+      plugin.sendToPropertyInspector({
+        type: 'crosshairStatus',
+        ok: false,
+        error: String(error.message || error),
+        settings
+      });
     }
   },
 

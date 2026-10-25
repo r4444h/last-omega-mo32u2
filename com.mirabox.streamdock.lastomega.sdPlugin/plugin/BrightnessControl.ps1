@@ -1,9 +1,8 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Read/adjust monitor brightness via Windows APIs:
-  - SDR: dxva2 SetMonitorBrightness (DDC)
-  - HDR: DisplayConfig SET_SDR_WHITE_LEVEL (SDR content brightness)
+  Read/adjust the monitor's own brightness, 0..100, in SDR and HDR via DDC.
+  Windows SDR white level is reported for diagnostics and is never changed.
 
 .EXAMPLE
   .\BrightnessControl.ps1 -Action status -NameFilter MO32U2
@@ -19,7 +18,9 @@ param(
   [int]$Delta = 0,
   [double]$Value = -1,
   [int]$StepSdr = 1,
-  [int]$StepHdr = 10
+  [int]$StepHdr = 1,
+  [ValidateSet('any', 'on', 'off')]
+  [string]$ExpectedHdr = 'any'
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,7 @@ $typeDef = @"
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 public static class BrightNative
 {
@@ -38,10 +40,7 @@ public static class BrightNative
     public const int DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO = 9;
     public const int DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL = 11;
     public const int DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2 = 15;
-    public const int DISPLAYCONFIG_DEVICE_INFO_SET_SDR_WHITE_LEVEL = unchecked((int)0xFFFFFFEE);
     public const int DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR = 2;
-    public const double MinSdrNits = 80.0;
-    public const double MaxSdrNits = 480.0;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct LUID { public uint LowPart; public int HighPart; }
@@ -145,15 +144,6 @@ public static class BrightNative
         public uint SDRWhiteLevel;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    public struct SDR_SET
-    {
-        public HEADER header;
-        public uint SDRWhiteLevel;
-        public byte finalValue;
-        public byte pad1, pad2, pad3;
-    }
-
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     public struct PHYSICAL_MONITOR
     {
@@ -183,7 +173,6 @@ public static class BrightNative
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref ADV_COLOR packet);
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref ADV_COLOR2 packet);
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref SDR_GET packet);
-    [DllImport("user32.dll")] public static extern int DisplayConfigSetDeviceInfo(ref SDR_SET packet);
     [DllImport("user32.dll")] public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
     [DllImport("dxva2.dll", SetLastError = true)] public static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, ref uint count);
@@ -245,6 +234,16 @@ public static class BrightNative
         return ok;
     }
 
+    private static bool ReadMonitorBrightness(IntPtr monitor, ref uint min, ref uint current, ref uint max)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (GetMonitorBrightness(monitor, ref min, ref current, ref max)) return true;
+            if (attempt < 2) Thread.Sleep(150);
+        }
+        return false;
+    }
+
     private static Dictionary<string, int> ReadDdcBrightnessByGdiDevice()
     {
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -266,7 +265,7 @@ public static class BrightNative
             try
             {
                 uint min = 0, cur = 0, max = 0;
-                if (GetMonitorBrightness(arr[0].hPhysicalMonitor, ref min, ref cur, ref max))
+                if (ReadMonitorBrightness(arr[0].hPhysicalMonitor, ref min, ref cur, ref max))
                 {
                     int pct = max > min ? (int)Math.Round(100.0 * (cur - min) / (max - min)) : (int)cur;
                     if (pct < 0) pct = 0;
@@ -285,23 +284,11 @@ public static class BrightNative
 
     private static void FillLabel(DisplayBrightInfo info)
     {
-        if (info.HdrEnabled && info.SdrWhiteNits.HasValue)
-        {
-            info.Value = Math.Round(info.SdrWhiteNits.Value);
-            info.Unit = "nits";
-            info.Label = ((int)info.Value).ToString() + "n";
-        }
-        else if (info.BrightnessPercent.HasValue)
+        if (info.BrightnessPercent.HasValue)
         {
             info.Value = info.BrightnessPercent.Value;
             info.Unit = "percent";
-            info.Label = info.BrightnessPercent.Value.ToString() + "%";
-        }
-        else if (info.SdrWhiteNits.HasValue)
-        {
-            info.Value = Math.Round(info.SdrWhiteNits.Value);
-            info.Unit = "nits";
-            info.Label = ((int)info.Value).ToString() + "n";
+            info.Label = (info.HdrEnabled ? "HDR " : "SDR ") + info.BrightnessPercent.Value.ToString() + "%";
         }
         else
         {
@@ -430,7 +417,7 @@ public static class BrightNative
         return WithPhysicalMonitor(display.GdiDevice, hPhys =>
         {
             uint min = 0, cur = 0, max = 0;
-            if (!GetMonitorBrightness(hPhys, ref min, ref cur, ref max))
+            if (!ReadMonitorBrightness(hPhys, ref min, ref cur, ref max))
                 return false;
             uint raw = max > min
                 ? (uint)Math.Round(min + (max - min) * (percent / 100.0))
@@ -441,28 +428,9 @@ public static class BrightNative
         });
     }
 
-    public static bool SetSdrWhiteNits(DisplayBrightInfo display, double nits)
-    {
-        // Soft absolute limits; plugin JS applies user HDR min/max.
-        if (nits < 1.0) nits = 1.0;
-        if (nits > 10000.0) nits = 10000.0;
-
-        var adapter = new LUID { LowPart = (uint)display.AdapterLow, HighPart = display.AdapterHigh };
-        var packet = new SDR_SET();
-        packet.header.type = DISPLAYCONFIG_DEVICE_INFO_SET_SDR_WHITE_LEVEL;
-        packet.header.size = Marshal.SizeOf(typeof(SDR_SET));
-        packet.header.adapterId = adapter;
-        packet.header.id = display.TargetId;
-        packet.SDRWhiteLevel = (uint)Math.Round(nits * 1000.0 / 80.0);
-        packet.finalValue = 1;
-        return DisplayConfigSetDeviceInfo(ref packet) == ERROR_SUCCESS;
-    }
-
     public static bool SetValue(DisplayBrightInfo display, double value)
     {
-        if (display.HdrEnabled)
-            return SetSdrWhiteNits(display, value);
-        // DDC brightness is integer percent 0..100
+        // The monitor has an independent DDC brightness setting in both modes.
         int pct = (int)Math.Round(value);
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
@@ -488,7 +456,7 @@ function Convert-Display([BrightNative+DisplayBrightInfo]$d) {
     sdrWhiteNits       = $d.SdrWhiteNits
     label              = $d.Label
     unit               = $d.Unit
-    value              = $d.Value
+    value              = $(if ($null -ne $d.BrightnessPercent) { $d.Value } else { $null })
   }
 }
 
@@ -519,6 +487,20 @@ function Select-TargetDisplay {
   return $candidates[0]
 }
 
+function Assert-BrightnessAvailable($display) {
+  if ($null -eq $display.BrightnessPercent) {
+    throw "Monitor brightness is unavailable over DDC; Windows SDR brightness was not substituted."
+  }
+}
+
+function Assert-HdrMode($display) {
+  if (($ExpectedHdr -eq 'on' -and -not $display.HdrEnabled) -or
+      ($ExpectedHdr -eq 'off' -and $display.HdrEnabled)) {
+    throw "HDR mode changed before brightness could be applied; refresh the monitor state."
+  }
+}
+
+try {
 switch ($Action) {
   "list" {
     $all = [BrightNative]::GetDisplays()
@@ -530,6 +512,7 @@ switch ($Action) {
   }
   "status" {
     $target = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
+    Assert-BrightnessAvailable $target
     @{
       ok      = $true
       action  = "status"
@@ -538,9 +521,15 @@ switch ($Action) {
   }
   "adjust" {
     $target = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
-    $ok = [BrightNative]::Adjust($target, $Delta, $StepSdr, $StepHdr)
+    Assert-BrightnessAvailable $target
+    Assert-HdrMode $target
+    $step = if ($target.HdrEnabled) { $StepHdr } else { $StepSdr }
+    $targetValue = [Math]::Max(0, [Math]::Min(100, [Math]::Round($target.BrightnessPercent + $Delta * $step)))
+    $ok = [BrightNative]::SetValue($target, $targetValue)
     Start-Sleep -Milliseconds 150
     $after = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
+    Assert-BrightnessAvailable $after
+    if (-not $ok -or $after.BrightnessPercent -ne $targetValue) { throw "Monitor brightness write was not confirmed." }
     @{
       ok      = [bool]$ok
       action  = "adjust"
@@ -552,10 +541,14 @@ switch ($Action) {
   }
   "set" {
     $target = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
-    if ($Value -lt 0) { throw "Value is required for -Action set" }
+    Assert-BrightnessAvailable $target
+    Assert-HdrMode $target
+    if ($Value -lt 0 -or $Value -gt 100) { throw "Monitor brightness must be 0..100." }
     $ok = [BrightNative]::SetValue($target, $Value)
     Start-Sleep -Milliseconds 150
     $after = Select-TargetDisplay -Filter $NameFilter -PreferPrimary:$Primary.IsPresent
+    Assert-BrightnessAvailable $after
+    if (-not $ok -or $after.BrightnessPercent -ne [Math]::Round($Value)) { throw "Monitor brightness write was not confirmed." }
     @{
       ok      = [bool]$ok
       action  = "set"
@@ -563,4 +556,8 @@ switch ($Action) {
       display = Convert-Display $after
     } | ConvertTo-Json -Compress -Depth 5
   }
+}
+} catch {
+  [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+  exit 1
 }

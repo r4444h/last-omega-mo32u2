@@ -50,15 +50,13 @@
       "Settings": {
         "nameFilter": "MO32U2",
         "stepSdr": 1,
-        "stepHdr": 10,
-        "pollSec": 3,
-        "hdrMin": 80,
-        "hdrMax": 480
+        "stepHdr": 1,
+        "pollSec": 3
       },
       "Controllers": ["Keypad", "Information", "Knob"],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": true,
-      "Tooltip": "Яркость монитора / яркость SDR-контента в HDR (крутилка Knob)",
+      "Tooltip": "Яркость самого монитора 0–100 в SDR и HDR (крутилка Knob)",
       "UUID": "com.mirabox.streamdock.lastomega.brightness",
       "PropertyInspectorPath": "propertyInspector/brightness/index.html"
     },

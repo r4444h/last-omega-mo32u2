@@ -16,8 +16,8 @@ HDR、亮度、准星、图像模式与刷新率，无需再钻进屏幕菜单�
 | 动作 | 说明 |
 |------|------|
 | **HDR** | 开关 Windows HDR（针对 MO32U2） |
-| **亮度** | SDR 用 `%`，HDR 下 SDR 内容用 **nits**；同一旋钮 |
-| **准星** | 通过 Sidekick HID 控制面板准星 |
+| **亮度** | SDR 和 HDR 均调节显示器本身的 **0–100** 亮度，控制器显示当前模式 |
+| **准星** | Sidekick HID 控制准星；USB 不可用时使用经过验证的 MO32U2 DDC 通道 |
 | **图像模式** | 转动预览，停转后写入 Graphics / Picture Mode |
 | **刷新率** | 在按键上显示当前 Hz（如 `240Hz`），轮询间隔可配置 |
 
@@ -77,8 +77,8 @@ cd ..\..\..
 
 - Stream Dock SDK（WebSocket `ws`，Node 20）
 - HDR — Windows DisplayConfig
-- 亮度 — DDC/CI + HDR 下 SDR 白电平 API
-- 准星 / 图像模式 — Sidekick USB HID（`VID_0BDA&PID_1100`）
+- 亮度 — SDR 和 HDR 均通过 DDC/CI 调节显示器亮度（0–100）
+- 准星 / 图像模式 — Sidekick USB HID（`VID_0BDA&PID_1100`）；准星还支持 MO32U2 DDC `0xEF`
 - 刷新率 — DisplayConfig Hz，对齐常见面板刷新率
 
 ## 许可

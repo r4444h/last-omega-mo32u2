@@ -5,6 +5,14 @@ All notable changes to **Last Omega** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Brightness now controls the monitor's 0–100 setting in both SDR and HDR. HDR changes immediately refresh neighboring brightness controls; Windows SDR white level is no longer used as HDR monitor brightness.
+- Brightness faces show SDR/HDR, legacy nits settings are migrated, and pending adjustments cannot carry an old mode's value into a new HDR mode.
+- AIM now falls back to the MO32U2 Sidekick DDC command when USB HID is unavailable, including HDMI connections. DDC status and writes are checked against the monitor.
+- AIM commands run in order, and helper errors reach the action settings instead of losing their diagnostic message.
+
 ## [0.5.5] - 2026-08-09
 
 ### Added

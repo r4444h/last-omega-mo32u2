@@ -45,8 +45,8 @@ The **MiraBox N4 Pro** (Stream Dock) has real knobs and keys sitting on your des
 | Action | What it does |
 |--------|----------------|
 | **HDR Toggle** | Flip Windows HDR for the MO32U2 |
-| **Brightness** | SDR `%` or HDR SDR-content **nits** — one knob, correct unit |
-| **Crosshair** | On-panel AIM via Gigabyte Sidekick HID |
+| **Brightness** | Monitor brightness **0–100** in SDR and HDR, with the current mode shown on the control |
+| **Crosshair** | On-panel AIM via Gigabyte Sidekick HID, with a verified DDC fallback on MO32U2 |
 | **Picture Mode** | Cycle **Graphics** profiles (STD / FPS / MOBA / …) with preview-then-apply |
 | **Refresh Rate** | Show current panel Hz on a Key (`240Hz`), configurable poll interval |
 
@@ -148,8 +148,8 @@ cd ..\..\..
 |-------|------|
 | Plugin host API | Stream Dock SDK (`ws` WebSocket, Node 20) |
 | HDR | Windows DisplayConfig (PowerShell) |
-| Brightness | DDC/CI + HDR SDR white-level APIs |
-| Crosshair / Picture | Gigabyte OSD Sidekick USB HID (`VID_0BDA&PID_1100`) |
+| Brightness | DDC/CI monitor brightness in SDR and HDR |
+| Crosshair / Picture | Gigabyte OSD Sidekick USB HID (`VID_0BDA&PID_1100`); AIM also supports MO32U2 DDC `0xEF` |
 | Refresh Rate | DisplayConfig path refresh (Hz), snapped to common panel rates |
 | UI | Transparent keys + dial titles; Property Inspectors (HTML) |
 

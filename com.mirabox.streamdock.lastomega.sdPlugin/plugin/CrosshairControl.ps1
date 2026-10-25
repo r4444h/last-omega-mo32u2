@@ -210,6 +210,105 @@ public static class GbHidCrosshair {
     } finally { CloseHandle(h); }
   }
 }
+
+// MO32U2 Sidekick uses VCP 0xEF for its HDMI/DDC crosshair backend.
+// Resolve the model from Windows before accessing this vendor-specific code.
+public static class GbDdcCrosshair {
+  private const byte CrosshairCode = 0xEF;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct RECT { public int left, top, right, bottom; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct MONITORINFOEX {
+    public int cbSize;
+    public RECT rcMonitor, rcWork;
+    public uint dwFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+  }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct DISPLAY_DEVICE {
+    public int cb;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+    public uint StateFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+  }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct PHYSICAL_MONITOR {
+    public IntPtr hPhysicalMonitor;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string description;
+  }
+  private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr hdc, IntPtr rect, IntPtr data);
+  [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX info);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool EnumDisplayDevices(string device, uint index, ref DISPLAY_DEVICE info, uint flags);
+  [DllImport("dxva2.dll", SetLastError = true)] private static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr monitor, out uint count);
+  [DllImport("dxva2.dll", SetLastError = true)] private static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr monitor, uint count, [Out] PHYSICAL_MONITOR[] monitors);
+  [DllImport("dxva2.dll", SetLastError = true)] private static extern bool DestroyPhysicalMonitors(uint count, [In] PHYSICAL_MONITOR[] monitors);
+  [DllImport("dxva2.dll", SetLastError = true)] private static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr monitor, byte code, out uint type, out uint current, out uint maximum);
+  [DllImport("dxva2.dll", SetLastError = true)] private static extern bool SetVCPFeature(IntPtr monitor, byte code, uint value);
+
+  private static int ReadStyle(IntPtr monitor) {
+    uint type, current, maximum;
+    if (!GetVCPFeatureAndVCPFeatureReply(monitor, CrosshairCode, out type, out current, out maximum)) {
+      throw new Exception("AIM DDC read failed: " + Marshal.GetLastWin32Error());
+    }
+    // Value 5 is Sidekick's custom crosshair; preserve it when reading status.
+    if (current > 5) throw new Exception("Unexpected AIM DDC value: " + current);
+    return (int)current;
+  }
+
+  private static string Run(int requestedStyle) {
+    string result = null;
+    Exception failure = null;
+    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate(IntPtr monitor, IntPtr hdc, IntPtr rect, IntPtr data) {
+      var info = new MONITORINFOEX(); info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+      if (!GetMonitorInfo(monitor, ref info)) return true;
+      var device = new DISPLAY_DEVICE(); device.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+      if (!EnumDisplayDevices(info.szDevice, 0, ref device, 0)) return true;
+      if (device.DeviceID == null || device.DeviceID.IndexOf("MONITOR\\GBT3217\\", StringComparison.OrdinalIgnoreCase) < 0) return true;
+
+      try {
+        uint count;
+        if (!GetNumberOfPhysicalMonitorsFromHMONITOR(monitor, out count) || count != 1) {
+          throw new Exception("MO32U2 DDC monitor handle unavailable or ambiguous");
+        }
+        var physical = new PHYSICAL_MONITOR[count];
+        if (!GetPhysicalMonitorsFromHMONITOR(monitor, count, physical)) {
+          throw new Exception("MO32U2 DDC open failed: " + Marshal.GetLastWin32Error());
+        }
+        try {
+          // A physical monitor handle of zero is valid on this display driver.
+          IntPtr handle = physical[0].hPhysicalMonitor;
+          int current = ReadStyle(handle);
+          if (requestedStyle >= 0) {
+            if (!SetVCPFeature(handle, CrosshairCode, (uint)requestedStyle)) {
+              throw new Exception("AIM DDC write failed: " + Marshal.GetLastWin32Error());
+            }
+            for (int attempt = 0; attempt < 3; attempt++) {
+              Thread.Sleep(120);
+              current = ReadStyle(handle);
+              if (current == requestedStyle) break;
+            }
+            if (current != requestedStyle) throw new Exception("AIM DDC verification failed: requested " + requestedStyle + ", read " + current);
+          }
+          result = "{\"ok\":true,\"enabled\":" + (current > 0 ? "true" : "false") + ",\"value\":" + current + ",\"style\":" + current + ",\"devices\":0,\"source\":\"monitor\",\"method\":\"ddc-ef\"}";
+        } finally { DestroyPhysicalMonitors(count, physical); }
+      } catch (Exception error) { failure = error; }
+      return false;
+    }, IntPtr.Zero);
+    if (failure != null) throw failure;
+    if (result == null) throw new Exception("Gigabyte MO32U2 DDC display not found");
+    return result;
+  }
+
+  public static string Status() { return Run(-1); }
+  public static string SetStyle(int style) {
+    if (style < 0 || style > 4) throw new ArgumentOutOfRangeException("style");
+    return Run(style);
+  }
+}
 '@
 
 try {
@@ -239,22 +338,44 @@ function Write-LocalState($enabled, $style, $value) {
   Set-Content -LiteralPath $StateFile -Value $payload -Encoding UTF8
 }
 
+function Get-CrosshairState {
+  $st = Read-LocalState
+  $probe = [GbHidCrosshair]::Probe() | ConvertFrom-Json
+  if ($probe.devices -gt 0) {
+    return [pscustomobject]@{
+      ok = $true
+      enabled = [bool]$st.enabled
+      value = [int]$st.value
+      style = [int]$(if ($st.style -gt 0) { $st.style } else { 1 })
+      devices = [int]$probe.devices
+      source = 'cache'
+      method = 'hid-e037'
+    }
+  }
+  $live = [GbDdcCrosshair]::Status() | ConvertFrom-Json
+  if ($live.style -lt 1 -or $live.style -gt 4) {
+    $live.style = [int]$(if ($st.style -ge 1 -and $st.style -le 4) { $st.style } else { 1 })
+  }
+  return $live
+}
+
+function Set-CrosshairStyle([int]$style) {
+  try {
+    return [GbHidCrosshair]::SetStyle($style)
+  } catch {
+    $hidError = $_.Exception.Message
+    try { return [GbDdcCrosshair]::SetStyle($style) }
+    catch { throw "USB AIM: $hidError; DDC AIM: $($_.Exception.Message)" }
+  }
+}
+
 try {
   switch ($Action) {
     'status' {
-      $st = Read-LocalState
-      $probe = [GbHidCrosshair]::Probe() | ConvertFrom-Json
-      [pscustomobject]@{
-        ok = $true
-        enabled = [bool]$st.enabled
-        value = [int]$st.value
-        style = [int]$(if ($st.style -gt 0) { $st.style } else { 1 })
-        devices = [int]$probe.devices
-        source = 'cache'
-      } | ConvertTo-Json -Compress
+      Get-CrosshairState | ConvertTo-Json -Compress
     }
     'off' {
-      $raw = [GbHidCrosshair]::SetStyle(0)
+      $raw = Set-CrosshairStyle 0
       $obj = $raw | ConvertFrom-Json
       if (-not $obj.ok) { throw $obj.error }
       Write-LocalState $false 1 0
@@ -262,7 +383,7 @@ try {
     }
     'on' {
       $s = if ($Value -ge 1 -and $Value -le 4) { $Value } elseif ($Style -ge 1) { $Style } else { 1 }
-      $raw = [GbHidCrosshair]::SetStyle($s)
+      $raw = Set-CrosshairStyle $s
       $obj = $raw | ConvertFrom-Json
       if (-not $obj.ok) { throw $obj.error }
       Write-LocalState $true $s $s
@@ -271,28 +392,27 @@ try {
     'set' {
       $s = if ($Value -ge 0) { $Value } else { $Style }
       if ($s -lt 0 -or $s -gt 4) { throw "Style/value must be 0..4" }
-      $raw = [GbHidCrosshair]::SetStyle($s)
+      $raw = Set-CrosshairStyle $s
       $obj = $raw | ConvertFrom-Json
       if (-not $obj.ok) { throw $obj.error }
       Write-LocalState ($s -gt 0) $(if ($s -gt 0) { $s } else { 1 }) $s
       $raw
     }
     'toggle' {
-      $st = Read-LocalState
+      $st = Get-CrosshairState
       if ($st.enabled) {
-        $raw = [GbHidCrosshair]::SetStyle(0)
+        $raw = Set-CrosshairStyle 0
         Write-LocalState $false $(if ($st.style -gt 0) { $st.style } else { 1 }) 0
         $raw
       } else {
         $s = if ($Style -ge 1) { $Style } elseif ($st.style -ge 1) { [int]$st.style } else { 1 }
-        $raw = [GbHidCrosshair]::SetStyle($s)
+        $raw = Set-CrosshairStyle $s
         Write-LocalState $true $s $s
         $raw
       }
     }
   }
 } catch {
-  $msg = $_.Exception.Message -replace '[\\\"\r\n]', ' '
-  Write-Output ("{`"ok`":false,`"error`":`"$msg`"}")
+  [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
   exit 1
 }

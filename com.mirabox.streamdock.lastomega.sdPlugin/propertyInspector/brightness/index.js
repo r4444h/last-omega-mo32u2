@@ -5,8 +5,6 @@ const $dom = {
   nameFilter: $('#nameFilter'),
   stepSdr: $('#stepSdr'),
   stepHdr: $('#stepHdr'),
-  hdrMin: $('#hdrMin'),
-  hdrMax: $('#hdrMax'),
   pollSec: $('#pollSec'),
   statusText: $('#statusText'),
   btnRefresh: $('#btnRefresh'),
@@ -28,18 +26,10 @@ function normalizePoll(value, fallback) {
   return Math.min(3600, n);
 }
 
-function normalizeBound(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(10000, n));
-}
-
 function isEditingFields() {
   return (
     document.activeElement === $dom.stepSdr ||
     document.activeElement === $dom.stepHdr ||
-    document.activeElement === $dom.hdrMin ||
-    document.activeElement === $dom.hdrMax ||
     document.activeElement === $dom.pollSec
   );
 }
@@ -56,13 +46,7 @@ function applySettingsToUi(settings = {}, { force = false } = {}) {
     $dom.stepSdr.value = normalizeStep(settings.stepSdr, 1);
   }
   if (settings.stepHdr != null && document.activeElement !== $dom.stepHdr) {
-    $dom.stepHdr.value = normalizeStep(settings.stepHdr, 10);
-  }
-  if (settings.hdrMin != null && document.activeElement !== $dom.hdrMin) {
-    $dom.hdrMin.value = normalizeBound(settings.hdrMin, 80);
-  }
-  if (settings.hdrMax != null && document.activeElement !== $dom.hdrMax) {
-    $dom.hdrMax.value = normalizeBound(settings.hdrMax, 480);
+    $dom.stepHdr.value = settings.controlVersion === 2 ? normalizeStep(settings.stepHdr, 1) : 1;
   }
   if (settings.pollSec != null && document.activeElement !== $dom.pollSec) {
     $dom.pollSec.value = normalizePoll(settings.pollSec, 3);
@@ -107,30 +91,20 @@ function renderStatus(display) {
     return;
   }
 
-  if (display.hdrEnabled) {
-    $dom.statusText.textContent = `${display.name || 'Display'}: HDR, SDR ${display.sdrWhiteNits || display.value} nits`;
-  } else {
-    $dom.statusText.textContent = `${display.name || 'Display'}: brightness ${display.brightnessPercent ?? display.value}%`;
-  }
+  const mode = display.hdrEnabled ? 'HDR' : 'SDR';
+  const value = display.brightnessPercent;
+  $dom.statusText.textContent = value == null ? `${display.name || 'Display'}: unavailable` :
+    `${display.name || 'Display'}: ${mode}, monitor ${value}%`;
 }
 
 function currentSettingsPayload() {
-  let hdrMin = normalizeBound($dom.hdrMin.value, 80);
-  let hdrMax = normalizeBound($dom.hdrMax.value, 480);
-  if (hdrMax < hdrMin) {
-    const tmp = hdrMin;
-    hdrMin = hdrMax;
-    hdrMax = tmp;
-  }
-
   return {
     type: 'applySettings',
     nameFilter: $dom.nameFilter.value,
     stepSdr: normalizeStep($dom.stepSdr.value, 1),
-    stepHdr: normalizeStep($dom.stepHdr.value, 10),
+    stepHdr: normalizeStep($dom.stepHdr.value, 1),
     pollSec: normalizePoll($dom.pollSec.value, 3),
-    hdrMin,
-    hdrMax
+    controlVersion: 2
   };
 }
 
@@ -172,7 +146,7 @@ const $propEvent = {
 
 $dom.nameFilter.addEventListener('change', saveSettingsNow);
 
-[$dom.stepSdr, $dom.stepHdr, $dom.hdrMin, $dom.hdrMax, $dom.pollSec].forEach((el) => {
+[$dom.stepSdr, $dom.stepHdr, $dom.pollSec].forEach((el) => {
   el.addEventListener('input', saveSettingsSoon);
   el.addEventListener('change', saveSettingsNow);
   el.addEventListener('blur', saveSettingsNow);
