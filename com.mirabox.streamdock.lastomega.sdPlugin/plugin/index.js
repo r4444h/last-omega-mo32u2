@@ -522,7 +522,7 @@ async function refreshHdr(context) {
       settings
     });
     if (modeChanged && !brightnessTransitions[filter]) {
-      await refreshBrightnessAfterHdrChange(filter, enabled);
+      await refreshBrightnessAfterModeChange(filter, enabled);
     }
     return display;
   } catch (error) {
@@ -916,7 +916,7 @@ function beginBrightnessModeChange(filter, enabled) {
   return epoch;
 }
 
-async function refreshBrightnessAfterHdrChange(filter, enabled, epoch) {
+async function refreshBrightnessAfterModeChange(filter, enabled, epoch) {
   if (epoch == null) epoch = beginBrightnessModeChange(filter, enabled);
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -925,7 +925,7 @@ async function refreshBrightnessAfterHdrChange(filter, enabled, epoch) {
       const result = await runBrightness({ action: 'status', nameFilter: filter });
       if (epoch !== brightnessEpochByFilter[filter]) return null;
       if (!result?.ok || result.display?.brightnessPercent == null) {
-        throw new Error(result?.error || 'Monitor brightness is unavailable after HDR change');
+        throw new Error(result?.error || 'Monitor brightness is unavailable after mode change');
       }
       if (typeof enabled === 'boolean' && !!result.display.hdrEnabled !== enabled) {
         throw new Error('Waiting for the monitor HDR mode to settle');
@@ -955,7 +955,7 @@ async function refreshBrightnessAfterHdrChange(filter, enabled, epoch) {
         error: String(lastError?.message || lastError), settings });
     });
   }
-  log.error('brightness after HDR change', lastError);
+  log.error('brightness after mode change', lastError);
   return null;
 }
 
@@ -972,10 +972,14 @@ async function changeHdrAndRefreshBrightness(settings, action) {
     for (const context of Object.keys(plugin.hdr.data)) {
       if ((hdrSettings(context).nameFilter || DEFAULT_FILTER) === filter) paintHdrFromCache(context);
     }
-    await refreshBrightnessAfterHdrChange(filter, enabled, epoch);
+    await refreshBrightnessAfterModeChange(filter, enabled, epoch);
+    if (epoch === brightnessEpochByFilter[filter]) {
+      const pictureContext = Object.keys(plugin.pictureMode?.data || {}).find(context => pictureFilter(context) === filter);
+      if (pictureContext) await refreshPictureMode(pictureContext);
+    }
     return result;
   } catch (error) {
-    await refreshBrightnessAfterHdrChange(filter, undefined, epoch);
+    await refreshBrightnessAfterModeChange(filter, undefined, epoch);
     throw error;
   }
 }
@@ -1430,6 +1434,7 @@ function paintPictureEverywhere(filter, state) {
 function rememberPictureState(filter, result, { keepPending = false } = {}) {
   const state = ensurePictureState(filter);
   const modes = normalizePictureModes(result.modes) || state.modes;
+  if (state.hdrEnabled !== !!result.hdrEnabled) state.lastSentValue = null;
 
   if (Number.isFinite(Number(result.value))) {
     state.value = Number(result.value);
@@ -1539,6 +1544,9 @@ async function commitPictureMode(filter) {
   }
 
   state.committing = true;
+  // A picture profile restores its own brightness even when HDR stays the same.
+  // Cancel old-profile writes and hold dial ticks until the new baseline is read.
+  const brightnessEpoch = beginBrightnessModeChange(filter, brightnessByFilter[filter]?.hdrEnabled);
   // Safety: never leave dial locked if PowerShell hangs.
   state.commitWatchdog = setTimeout(() => {
     log.error('commitPictureMode watchdog — forcing unlock', filter);
@@ -1571,8 +1579,10 @@ async function commitPictureMode(filter) {
       paintPictureEverywhere(filter, live);
     }
     writeStateCacheFile();
+    await refreshBrightnessAfterModeChange(filter, !!result.hdrEnabled, brightnessEpoch);
   } catch (error) {
     log.error('commitPictureMode', error);
+    await refreshBrightnessAfterModeChange(filter, undefined, brightnessEpoch);
   } finally {
     const live = ensurePictureState(filter);
     unlockPictureCommit(filter);

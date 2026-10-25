@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The session accepts only fixed monitor commands over local stdin/stdout and uses RemoteSigned for its process. Developer deployment preserves monitor state files.
 
 ### Fixed
+- Applying a picture profile immediately refreshes all brightness controls from that profile's hardware setting in SDR and HDR, cancels old pending brightness writes, and applies turns made during the change to the new baseline.
+- HDR switches also reload the active picture profile, so equal numeric profile IDs in HDR and SDR cannot suppress a new selection.
 - Brightness now controls the monitor's 0–100 setting in both SDR and HDR. HDR changes immediately refresh neighboring brightness controls; Windows SDR white level is no longer used as HDR monitor brightness.
 - Brightness faces show SDR/HDR, legacy nits settings are migrated, and pending adjustments cannot carry an old mode's value into a new HDR mode.
 - AIM now falls back to the MO32U2 Sidekick DDC command when USB HID is unavailable, including HDMI connections. DDC status and writes are checked against the monitor.

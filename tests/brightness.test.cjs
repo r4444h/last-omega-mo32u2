@@ -10,7 +10,7 @@ const tick = () => new Promise(setImmediate);
 
 function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   const messages = [], calls = [], writes = [], cacheWrites = [], timers = new Set();
-  const hardware = { hdr, sdr: 70, hdrBrightness: 10 };
+  const hardware = { hdr, sdr: 70, hdrBrightness: 10, pictureSdr: 0, pictureHdr: 0 };
   class Plugins {
     setTitle(context, title) { messages.push({ type: 'title', context, title }); }
     setImage(context, image) { messages.push({ type: 'image', context, image: decodeURIComponent(image) }); }
@@ -35,6 +35,18 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
         const call = { script, action, args, callback };
         calls.push(call);
         const execute = () => {
+          if (script === 'PictureModeControl.ps1') {
+            if (action === 'set') {
+              const value = Number(args[args.indexOf('-Value') + 1]);
+              hardware[hardware.hdr ? 'pictureHdr' : 'pictureSdr'] = value;
+              hardware[hardware.hdr ? 'hdrBrightness' : 'sdr'] = hardware.hdr ? 35 : 25;
+            }
+            const modes = [{ id: 0, short: 'STD', name: 'Standard' }, { id: 1, short: 'GAME', name: 'Gaming' }];
+            const value = hardware[hardware.hdr ? 'pictureHdr' : 'pictureSdr'];
+            callback(null, JSON.stringify({ ok: true, hdrEnabled: hardware.hdr, value, modes,
+              short: modes[value].short, name: modes[value].name, hdrModes: modes, sdrModes: modes }), '');
+            return;
+          }
           if (script === 'HdrControl.ps1' && action !== 'status') {
             hardware.hdr = action === 'on' ? true : action === 'off' ? false : !hardware.hdr;
           }
@@ -61,16 +73,98 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   });
   vm.runInContext(`${source}\nglobalThis.api = { plugin, refreshBrightness, refreshHdr, brightnessSettings,
     brightnessByFilter, hdrByFilter, controllerByContext, adjustBrightness, commitBrightness,
-    paintBrightnessFromCache, flushStateCacheFile };`, sandbox);
+    paintBrightnessFromCache, flushStateCacheFile, ensurePictureState,
+    adjustPictureMode, commitPictureMode, refreshPictureMode };`, sandbox);
   const api = sandbox.api;
   const settings = { nameFilter: 'MO32U2', stepSdr: 1, stepHdr: 1, pollSec: 3, controlVersion: 2 };
   api.plugin.brightness.data.key = { ...settings };
   api.plugin.brightness.data.knob = { ...settings };
   api.plugin.hdr.data.hdr = { nameFilter: 'MO32U2', mode: 'toggle' };
+  api.plugin.pictureMode.data.picture = { nameFilter: 'MO32U2', pollSec: 30, performanceVersion: 1 };
   api.controllerByContext.knob = 'Knob';
+  api.controllerByContext.picture = 'Knob';
   t.after(() => { for (const id of timers) clearTimeout(id); });
   return { ...api, messages, calls, writes, cacheWrites, hardware };
 }
+
+for (const hdr of [false, true]) {
+  test(`applying a picture profile immediately refreshes both brightness faces in ${hdr ? 'HDR' : 'SDR'}`, async t => {
+    const f = fixture(t, { hdr });
+    await f.refreshBrightness('key');
+    const state = f.ensurePictureState('MO32U2');
+    state.pendingValue = 1;
+    await f.commitPictureMode('MO32U2');
+    const expected = hdr ? 35 : 25;
+    const label = `${hdr ? 'HDR' : 'SDR'} ${expected}%`;
+    assert.equal(f.brightnessByFilter.MO32U2.value, expected);
+    assert.equal(f.brightnessByFilter.MO32U2.lastSentValue, expected);
+    assert.equal(f.messages.filter(m => m.type === 'title' && m.context === 'knob').at(-1).title, label);
+    assert.ok(f.messages.filter(m => m.type === 'image' && m.context === 'key').at(-1).image.includes(`${expected}%`));
+    assert.equal(f.calls.filter(c => c.script === 'BrightnessControl.ps1' && c.action === 'status').length, 2);
+    assert.equal(f.writes.length, 0, 'reading the profile must not write an old brightness back');
+  });
+}
+
+test('profile previews do not read brightness until a profile is applied', async t => {
+  const f = fixture(t);
+  await f.refreshBrightness('key');
+  await f.refreshPictureMode('picture');
+  await f.adjustPictureMode('picture', 1);
+  assert.equal(f.calls.filter(c => c.script === 'BrightnessControl.ps1').length, 1);
+  assert.equal(f.calls.filter(c => c.script === 'PictureModeControl.ps1' && c.action === 'set').length, 0);
+});
+
+test('HDR switching reloads the active profile and does not skip the same numeric profile in SDR', async t => {
+  const f = fixture(t, { hdr: true });
+  await f.refreshBrightness('key');
+  await f.refreshPictureMode('picture');
+  f.ensurePictureState('MO32U2').pendingValue = 1;
+  await f.commitPictureMode('MO32U2');
+  assert.equal(f.ensurePictureState('MO32U2').lastSentValue, 1);
+  await f.plugin.brightness.dialDown({ context: 'knob' });
+  assert.equal(f.ensurePictureState('MO32U2').hdrEnabled, false);
+  assert.equal(f.ensurePictureState('MO32U2').value, 0);
+  f.ensurePictureState('MO32U2').pendingValue = 1;
+  await f.commitPictureMode('MO32U2');
+  assert.equal(f.hardware.pictureSdr, 1);
+  assert.equal(f.brightnessByFilter.MO32U2.value, 25);
+  assert.equal(f.calls.filter(c => c.script === 'PictureModeControl.ps1' && c.action === 'set').length, 2);
+});
+
+test('a picture change cancels old pending brightness and applies new dial ticks to the profile baseline', async t => {
+  let release;
+  const f = fixture(t, { intercept(call, execute) {
+    if (call.script === 'PictureModeControl.ps1' && call.action === 'set') { release = execute; return true; }
+  } });
+  await f.refreshBrightness('key');
+  f.adjustBrightness('knob', 1); // An old-profile 71% write is still pending.
+  f.ensurePictureState('MO32U2').pendingValue = 1;
+  const change = f.commitPictureMode('MO32U2');
+  await tick();
+  f.adjustBrightness('knob', 1);
+  release();
+  await change;
+  assert.equal(f.brightnessByFilter.MO32U2.value, 26);
+  await f.commitBrightness('MO32U2');
+  assert.deepEqual(f.writes, [{ value: 26, hdr: false }]);
+});
+
+test('failed picture changes recover brightness and release the transition', async t => {
+  const f = fixture(t, { intercept(call) {
+    if (call.script === 'PictureModeControl.ps1' && call.action === 'set') {
+      queueMicrotask(() => call.callback(null, '{"ok":false,"error":"profile unavailable"}', ''));
+      return true;
+    }
+  } });
+  await f.refreshBrightness('key');
+  f.ensurePictureState('MO32U2').pendingValue = 1;
+  await f.commitPictureMode('MO32U2');
+  assert.equal(f.brightnessByFilter.MO32U2.value, 70);
+  assert.equal(f.brightnessByFilter.MO32U2.loading, false);
+  assert.equal(f.ensurePictureState('MO32U2').committing, false);
+  f.adjustBrightness('knob', 1);
+  assert.equal(f.brightnessByFilter.MO32U2.value, 71);
+});
 
 test('unchanged monitor polls do not rewrite the UI cache and changed state is published atomically', async t => {
   const f = fixture(t);
