@@ -45,7 +45,7 @@ The **MiraBox N4 Pro** (Stream Dock) has real knobs and keys sitting on your des
 | Action | What it does |
 |--------|----------------|
 | **HDR Toggle** | Flip Windows HDR for the MO32U2 |
-| **Brightness** | Monitor brightness **0–100** in SDR and HDR, with the current mode shown on the control |
+| **Brightness** | Turn for monitor brightness **0–100** in SDR and HDR; press the key or dial to toggle HDR |
 | **Crosshair** | On-panel AIM via Gigabyte Sidekick HID, with a verified DDC fallback on MO32U2 |
 | **Picture Mode** | Cycle **Graphics** profiles (STD / FPS / MOBA / …) with preview-then-apply |
 | **Refresh Rate** | Show current panel Hz on a Key (`240Hz`), configurable poll interval |
@@ -133,9 +133,9 @@ See [Build](#build) below, then `.\scripts\deploy.ps1`.
 # 1) Dependencies (Node 20+)
 cd com.mirabox.streamdock.lastomega.sdPlugin\plugin
 npm ci
-cd ..\..\..
+cd ..\..
 
-# 2) Dev deploy into Stream Dock (restarts the app)
+# 2) Dev deploy (preserves monitor state and restarts Stream Dock)
 .\scripts\deploy.ps1
 
 # 3) Create the community install zip → dist\
@@ -147,11 +147,38 @@ cd ..\..\..
 | Layer | Tech |
 |-------|------|
 | Plugin host API | Stream Dock SDK (`ws` WebSocket, Node 20) |
-| HDR | Windows DisplayConfig (PowerShell) |
+| Monitor session | One Windows PowerShell process, serialized local JSON over stdin/stdout |
+| HDR | Windows DisplayConfig |
 | Brightness | DDC/CI monitor brightness in SDR and HDR |
 | Crosshair / Picture | Gigabyte OSD Sidekick USB HID (`VID_0BDA&PID_1100`); AIM also supports MO32U2 DDC `0xEF` |
 | Refresh Rate | DisplayConfig path refresh (Hz), snapped to common panel rates |
 | UI | Transparent keys + dial titles; Property Inspectors (HTML) |
+
+`MonitorControl.ps1` reuses the maintained diagnostic helpers in one Windows
+PowerShell session. Their Win32 interop types load once per session through
+the existing `Add-Type` calls. There is no custom EXE, MSBuild step, download,
+or compilation on each poll. The process uses `RemoteSigned`; system execution
+policy, Group Policy and antivirus settings are not changed. After a display
+mode change, the session reconnects to release stale driver state.
+
+Controls share status reads per monitor. Brightness is checked every 15 seconds
+by default, HDR and picture metadata every 30 seconds, refresh rate every 60
+seconds. Windows display events and user input refresh the affected controls
+immediately. AIM has no recurring poll. Only visible controls keep a poll active;
+failures use bounded backoff. Hardware writes have priority over queued reads.
+Brightness changes preview immediately and are combined into one write after
+280 ms without rotation. Picture mode selection is remembered from the last
+successful plugin command; changes made directly in Sidekick are not reliably
+readable through the panel's remapped VCP `0x14`.
+
+Measured on MO32U2 + N4 Pro on 2026-10-25, with the device's working profiles and
+32 logical processors (60-second idle samples; plugin and its descendants,
+excluding the Stream Dock host): average CPU fell from 2.524% to 0.014%, peak
+working memory from 489.5 to 167.8 MB. After initialization, the new sample
+contained no PowerShell starts or compiler processes, versus 117 of each
+previously. These are measurements on the validation PC, not an FPS benchmark.
+The original profile had a separate HDR key; the new profile uses the brightness
+control to toggle HDR.
 
 ---
 
@@ -170,7 +197,7 @@ last-omega/
 └── com.mirabox.streamdock.lastomega.sdPlugin/
     ├── manifest.json          # v0.5.5 · Node 20
     ├── en.json / ru.json / zh_CN.json
-    ├── plugin/                # index.js + *.ps1 helpers + ws
+    ├── plugin/                # index.js + persistent session + diagnostic helpers + ws
     ├── propertyInspector/     # Per-action settings
     └── static/
 ```

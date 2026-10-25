@@ -32,6 +32,10 @@ using System.Text;
 
 public static class HdrNative
 {
+    public static readonly System.Threading.AutoResetEvent DisplayChangeSignal = new System.Threading.AutoResetEvent(false);
+    private static void OnDisplayChanged(object sender, EventArgs args) { DisplayChangeSignal.Set(); }
+    public static void StartDisplayWatch() { Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged; }
+    public static void StopDisplayWatch() { Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; }
     public const int QDC_ONLY_ACTIVE_PATHS = 2;
     public const int ERROR_SUCCESS = 0;
 

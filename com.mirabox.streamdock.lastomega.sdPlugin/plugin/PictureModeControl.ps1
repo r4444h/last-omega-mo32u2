@@ -22,7 +22,8 @@ param(
 
   # Optional JSON arrays of {id,name,short} — id is hardware value
   [string]$SdrModesJson = '',
-  [string]$HdrModesJson = ''
+  [string]$HdrModesJson = '',
+  [Nullable[bool]]$KnownHdrEnabled = $null
 )
 
 $ErrorActionPreference = 'Stop'
@@ -297,11 +298,11 @@ public static class GbPictureMode {
 }
 '@
 
-try {
+if (-not ('GbPictureMode' -as [type])) { try {
   Add-Type -TypeDefinition $cs -ErrorAction Stop | Out-Null
 } catch {
   if ($_.Exception.Message -notmatch 'already exists') { throw }
-}
+} }
 
 function Get-ShortLabel([string]$name) {
   $n = ([string]$name).Trim()
@@ -493,7 +494,7 @@ function Convert-ModeList($json, $fallback) {
 
 function Get-HdrEnabled {
   try {
-    $raw = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $HdrScript -Action status -NameFilter $NameFilter 2>$null
+    $raw = & $HdrScript -Action status -NameFilter $NameFilter
     $line = ($raw | Out-String).Trim().Split("`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Last 1
     $obj = $line | ConvertFrom-Json
     return [bool]$obj.display.hdrEnabled
@@ -553,7 +554,7 @@ try {
   $hdrOverride = Convert-ModeList $HdrModesJson $null
   $sdrModes = if ($sdrOverride) { $sdrOverride } else { @($loaded.sdrModes) }
   $hdrModes = if ($hdrOverride) { $hdrOverride } else { @($loaded.hdrModes) }
-  $hdrEnabled = Get-HdrEnabled
+  $hdrEnabled = if ($null -ne $KnownHdrEnabled) { [bool]$KnownHdrEnabled } else { Get-HdrEnabled }
   $modes = if ($hdrEnabled) { $hdrModes } else { $sdrModes }
   $local = Read-LocalState
 
@@ -572,19 +573,15 @@ try {
       } | ConvertTo-Json -Compress -Depth 6
     }
     'status' {
-      $read = [GbPictureMode]::GetVcp()
       $cached = if ($hdrEnabled) { [int]$local.hdrValue } else { [int]$local.sdrValue }
       $value = if ((Find-Index $modes $cached) -ge 0) { $cached }
-               elseif ($read -ge 0 -and (Find-Index $modes $read) -ge 0) { $read }
                else { [int]$modes[0].id }
-      if ($hdrEnabled) { Write-LocalState $local.sdrValue $value }
-      else { Write-LocalState $value $local.hdrValue }
       Build-Result $modes $value $hdrEnabled @{
-        source = $loaded.source
+        source = 'cache'
         model = $loaded.model
         sdrType = $loaded.sdrType
         hdrType = $loaded.hdrType
-        read = $read
+        catalogSource = $loaded.source
       }
     }
     'set' {

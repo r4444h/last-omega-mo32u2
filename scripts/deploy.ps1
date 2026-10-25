@@ -82,13 +82,11 @@ function Stop-StreamDock {
 }
 
 function Copy-Plugin {
-  if (Test-Path $dest) {
-    Write-Host "Removing previous install..."
-    Remove-Item -LiteralPath $dest -Recurse -Force
-  }
-
-  Write-Host "Copying plugin..."
-  Copy-Item -LiteralPath $PluginSource -Destination $dest -Recurse -Force
+  Write-Host "Copying plugin and preserving monitor state..."
+  & robocopy $PluginSource $dest /E /NFL /NDL /NJH /NJS /nc /ns /np `
+    /XD '.worker-build' `
+    /XF '*.log' 'ui-state-cache.json' 'ui-state-cache.json.tmp' 'picture-mode-state.json' 'picture-modes-cache.json' 'crosshair-state.json' 'MonitorWorker.exe' 'MonitorWorker.sha256' | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "Plugin copy failed: $LASTEXITCODE" }
   Write-Host "Copied to: $dest" -ForegroundColor Green
 }
 
@@ -98,7 +96,7 @@ function Start-StreamDockApp {
   }
 
   Write-Host "Starting Stream Dock: $StreamDockExe"
-  Start-Process -FilePath $StreamDockExe
+  Start-Process -FilePath $StreamDockExe -ArgumentList '--RunInBackground' -WindowStyle Hidden
 }
 
 Stop-StreamDock

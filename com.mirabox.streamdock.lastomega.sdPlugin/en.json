@@ -7,7 +7,7 @@
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Brightness",
-    "Tooltip": "Monitor brightness 0–100 in SDR and HDR"
+    "Tooltip": "Press to toggle HDR. Rotate to adjust monitor brightness 0–100."
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Crosshair",

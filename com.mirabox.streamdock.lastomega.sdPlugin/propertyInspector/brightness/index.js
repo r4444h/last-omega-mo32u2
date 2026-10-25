@@ -22,7 +22,7 @@ function normalizeStep(value, fallback) {
 
 function normalizePoll(value, fallback) {
   const n = Math.round(Number(value));
-  if (!Number.isFinite(n) || n < 1) return fallback;
+  if (!Number.isFinite(n) || n < 5) return fallback;
   return Math.min(3600, n);
 }
 
@@ -49,7 +49,7 @@ function applySettingsToUi(settings = {}, { force = false } = {}) {
     $dom.stepHdr.value = settings.controlVersion === 2 ? normalizeStep(settings.stepHdr, 1) : 1;
   }
   if (settings.pollSec != null && document.activeElement !== $dom.pollSec) {
-    $dom.pollSec.value = normalizePoll(settings.pollSec, 3);
+    $dom.pollSec.value = normalizePoll(settings.pollSec, 15);
   }
 }
 
@@ -103,8 +103,9 @@ function currentSettingsPayload() {
     nameFilter: $dom.nameFilter.value,
     stepSdr: normalizeStep($dom.stepSdr.value, 1),
     stepHdr: normalizeStep($dom.stepHdr.value, 1),
-    pollSec: normalizePoll($dom.pollSec.value, 3),
-    controlVersion: 2
+    pollSec: normalizePoll($dom.pollSec.value, 15),
+    controlVersion: 2,
+    performanceVersion: 1
   };
 }
 

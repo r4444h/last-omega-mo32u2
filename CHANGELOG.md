@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Press the brightness key or dial to toggle HDR; turn the dial to adjust monitor brightness as before.
+- One Windows PowerShell session reuses the existing monitor helpers and loads their Win32 interop types once per session. No separate EXE, MSBuild step or executable-generating build script is required.
+
+### Changed
+- Visible controls for the same monitor share background reads. Brightness defaults to 15 seconds, HDR and picture metadata to 30 seconds, refresh rate to 60 seconds. Display changes trigger immediate refreshes.
+- Hardware commands run one at a time, interactive writes pass queued background reads, and failed polls back off without overlapping or building up a queue.
+- Picture status uses the last successful explicit selection without repeatedly querying a remapped DDC value. UI cache writes are atomic, combined, and skipped when the state has not changed.
+- The session accepts only fixed monitor commands over local stdin/stdout and uses RemoteSigned for its process. Developer deployment preserves monitor state files.
+
 ### Fixed
 - Brightness now controls the monitor's 0–100 setting in both SDR and HDR. HDR changes immediately refresh neighboring brightness controls; Windows SDR white level is no longer used as HDR monitor brightness.
 - Brightness faces show SDR/HDR, legacy nits settings are migrated, and pending adjustments cannot carry an old mode's value into a new HDR mode.

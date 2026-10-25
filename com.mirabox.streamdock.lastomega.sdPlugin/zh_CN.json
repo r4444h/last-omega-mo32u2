@@ -7,7 +7,7 @@
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "亮度",
-    "Tooltip": "SDR 和 HDR 模式下显示器本身的亮度（0–100）"
+    "Tooltip": "按下切换 HDR，旋转调节显示器亮度（0–100）。"
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "准星",

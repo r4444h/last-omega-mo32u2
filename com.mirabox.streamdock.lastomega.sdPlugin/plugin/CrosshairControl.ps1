@@ -311,11 +311,11 @@ public static class GbDdcCrosshair {
 }
 '@
 
-try {
+if (-not ('GbHidCrosshair' -as [type])) { try {
   Add-Type -TypeDefinition $cs -ReferencedAssemblies @('System') -ErrorAction Stop | Out-Null
 } catch {
   if ($_.Exception.Message -notmatch 'already exists') { throw }
-}
+} }
 
 function Read-LocalState {
   if (-not (Test-Path -LiteralPath $StateFile)) {

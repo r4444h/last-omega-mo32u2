@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const workerBridge = require('./worker-bridge.cjs');
 
 const pluginDir = path.resolve(__dirname, '../com.mirabox.streamdock.lastomega.sdPlugin/plugin');
 const source = fs.readFileSync(path.join(pluginDir, 'index.js'), 'utf8');
@@ -22,7 +23,9 @@ function loadPlugin(execFile) {
     __dirname: pluginDir,
     require(name) {
       if (name === 'child_process') return { execFile };
-      if (name === 'fs') return { readFileSync: () => '{}', writeFileSync: () => {} };
+      if (name === './utils/monitor-worker') return { MonitorWorker: workerBridge(execFile) };
+      if (name === './utils/shared-polling') return require('../com.mirabox.streamdock.lastomega.sdPlugin/plugin/utils/shared-polling');
+      if (name === 'fs') return { readFileSync: () => '{}', writeFileSync: () => {}, renameSync() {} };
       if (name === 'path') return path;
       if (name === './utils/plugin') return { Plugins, Actions, log: { error() {} } };
       throw new Error(`Unexpected dependency: ${name}`);

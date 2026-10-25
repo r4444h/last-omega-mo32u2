@@ -68,6 +68,7 @@ Write-Host "Staging plugin (excluding caches / logs / probes)..."
 $excludeDirs = @(
   "lastomega-debug.log",
   "ui-state-cache.json",
+  "ui-state-cache.json.tmp",
   "picture-mode-state.json",
   "picture-modes-cache.json",
   "crosshair-state.json"
@@ -75,7 +76,8 @@ $excludeDirs = @(
 
 # Robocopy mirrors the plugin; then delete runtime junk.
 & robocopy $pluginRoot $stagePlugin /E /NFL /NDL /NJH /NJS /nc /ns /np `
-  /XD "node_modules\.cache" | Out-Null
+  /XD "node_modules\.cache" ".worker-build" `
+  /XF 'MonitorWorker.exe' 'MonitorWorker.sha256' | Out-Null
 # robocopy exit codes 0-7 are success
 if ($LASTEXITCODE -ge 8) {
   throw "robocopy failed with exit $LASTEXITCODE"

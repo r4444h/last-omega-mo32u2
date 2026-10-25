@@ -7,7 +7,7 @@
   },
   "com.mirabox.streamdock.lastomega.brightness": {
     "Name": "Яркость",
-    "Tooltip": "Яркость самого монитора 0–100 в SDR и HDR"
+    "Tooltip": "Нажатие: HDR вкл/выкл. Вращение: яркость монитора 0–100."
   },
   "com.mirabox.streamdock.lastomega.crosshair": {
     "Name": "Прицел",

@@ -3,12 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const workerBridge = require('./worker-bridge.cjs');
 const pluginDir = path.resolve(__dirname, '../com.mirabox.streamdock.lastomega.sdPlugin/plugin');
 const source = fs.readFileSync(path.join(pluginDir, 'index.js'), 'utf8');
 const tick = () => new Promise(setImmediate);
 
 function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
-  const messages = [], calls = [], writes = [], timers = new Set();
+  const messages = [], calls = [], writes = [], cacheWrites = [], timers = new Set();
   const hardware = { hdr, sdr: 70, hdrBrightness: 10 };
   class Plugins {
     setTitle(context, title) { messages.push({ type: 'title', context, title }); }
@@ -20,10 +21,14 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   class Actions { constructor(options) { this.data = {}; Object.assign(this, options); } }
   const sandbox = vm.createContext({
     __dirname: pluginDir,
-    require(name) {
+    require: function fixtureRequire(name) {
       if (name === 'path') return path;
-      if (name === 'fs') return { readFileSync: () => JSON.stringify(cache), writeFileSync() {} };
+      if (name === 'fs') return { readFileSync: () => JSON.stringify(cache),
+        writeFileSync(file, value) { cacheWrites.push({ type: 'write', file, value }); },
+        renameSync(from, to) { cacheWrites.push({ type: 'rename', from, to }); } };
       if (name === './utils/plugin') return { Plugins, Actions, log: { error() {} } };
+      if (name === './utils/monitor-worker') return { MonitorWorker: workerBridge(fixtureRequire('child_process').execFile) };
+      if (name === './utils/shared-polling') return require('../com.mirabox.streamdock.lastomega.sdPlugin/plugin/utils/shared-polling');
       if (name === 'child_process') return { execFile(exe, args, options, callback) {
         const script = path.basename(args[args.indexOf('-File') + 1]);
         const action = args[args.indexOf('-Action') + 1];
@@ -56,7 +61,7 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   });
   vm.runInContext(`${source}\nglobalThis.api = { plugin, refreshBrightness, refreshHdr, brightnessSettings,
     brightnessByFilter, hdrByFilter, controllerByContext, adjustBrightness, commitBrightness,
-    paintBrightnessFromCache };`, sandbox);
+    paintBrightnessFromCache, flushStateCacheFile };`, sandbox);
   const api = sandbox.api;
   const settings = { nameFilter: 'MO32U2', stepSdr: 1, stepHdr: 1, pollSec: 3, controlVersion: 2 };
   api.plugin.brightness.data.key = { ...settings };
@@ -64,8 +69,26 @@ function fixture(t, { hdr = false, cache = {}, intercept } = {}) {
   api.plugin.hdr.data.hdr = { nameFilter: 'MO32U2', mode: 'toggle' };
   api.controllerByContext.knob = 'Knob';
   t.after(() => { for (const id of timers) clearTimeout(id); });
-  return { ...api, messages, calls, writes, hardware };
+  return { ...api, messages, calls, writes, cacheWrites, hardware };
 }
+
+test('unchanged monitor polls do not rewrite the UI cache and changed state is published atomically', async t => {
+  const f = fixture(t);
+  await f.refreshBrightness('key');
+  f.flushStateCacheFile();
+  assert.equal(f.cacheWrites.length, 2);
+  assert.equal(f.cacheWrites[0].type, 'write');
+  assert.ok(f.cacheWrites[0].file.endsWith('.json.tmp'));
+  assert.equal(f.cacheWrites[1].type, 'rename');
+  assert.ok(f.cacheWrites[1].to.endsWith('ui-state-cache.json'));
+  await f.refreshBrightness('key');
+  f.flushStateCacheFile();
+  assert.equal(f.cacheWrites.length, 2);
+  f.hardware.sdr = 71;
+  await f.refreshBrightness('key');
+  f.flushStateCacheFile();
+  assert.equal(f.cacheWrites.length, 4);
+});
 
 test('legacy nits cache and HDR bounds are not reused as monitor percentages', async t => {
   const f = fixture(t, { hdr: true, cache: { brightness: { MO32U2: {
@@ -185,4 +208,18 @@ test('a failed first brightness read unlocks the baseline for the next attempt',
   await tick();
   assert.equal(f.brightnessByFilter.MO32U2.loading, false);
   assert.ok(Number.isFinite(f.brightnessByFilter.MO32U2.value));
+});
+
+test('pressing the brightness knob toggles HDR while rotation changes only brightness', async t => {
+  const f = fixture(t);
+  await f.refreshBrightness('key');
+  await f.plugin.brightness.dialDown({ context: 'knob' });
+  assert.equal(f.hardware.hdr, true);
+  assert.equal(f.brightnessByFilter.MO32U2.value, 10);
+  f.plugin.brightness.dialRotate({ context: 'knob', payload: { ticks: 1 } });
+  await f.commitBrightness('MO32U2');
+  assert.equal(f.hardware.hdr, true);
+  assert.deepEqual(f.writes, [{ value: 11, hdr: true }]);
+  await f.plugin.brightness.keyUp({ context: 'key' });
+  assert.equal(f.hardware.hdr, false);
 });

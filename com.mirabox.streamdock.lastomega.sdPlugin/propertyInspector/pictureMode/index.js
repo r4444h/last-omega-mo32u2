@@ -33,7 +33,8 @@ function saveSettings() {
   $websocket.sendToPlugin({
     type: 'applySettings',
     nameFilter: $dom.nameFilter.value || 'MO32U2',
-    pollSec: Number($dom.pollSec.value) || 5
+    pollSec: Math.max(5, Number($dom.pollSec.value) || 30),
+    performanceVersion: 1
   });
 }
 

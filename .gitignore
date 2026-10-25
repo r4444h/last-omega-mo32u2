@@ -5,10 +5,15 @@ Thumbs.db
 .idea/
 **/log/
 **/ui-state-cache.json
+**/ui-state-cache.json.tmp
 **/crosshair-state.json
 **/picture-mode-state.json
 **/picture-modes-cache.json
 dist/
+**/MonitorWorker.exe
+**/MonitorWorker.sha256
+**/.worker-build/
+**/native/obj/
 scripts/probe-*.ps1
 scripts/HidPic*.cs
 scripts/Rtk*.cs

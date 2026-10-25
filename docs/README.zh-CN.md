@@ -68,7 +68,7 @@ HDR、亮度、准星、图像模式与刷新率，无需再钻进屏幕菜单�
 ```powershell
 cd com.mirabox.streamdock.lastomega.sdPlugin\plugin
 npm ci
-cd ..\..\..
+cd ..\..
 .\scripts\deploy.ps1          # 开发安装
 .\scripts\pack.ps1            # 社区安装包 → dist\
 ```

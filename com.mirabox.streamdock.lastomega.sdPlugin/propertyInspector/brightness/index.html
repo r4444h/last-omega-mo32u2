@@ -26,14 +26,11 @@
 
     <div class="sdpi-item">
       <div class="sdpi-item-label">Poll sec</div>
-      <input class="sdpi-item-value" id="pollSec" type="number" min="1" max="3600" step="1" value="3" list="pollPresets" />
+      <input class="sdpi-item-value" id="pollSec" type="number" min="5" max="3600" step="1" value="15" list="pollPresets" />
     </div>
 
     <datalist id="stepPresets">
       <option value="0.5"></option>
-      <option value="1"></option>
-      <option value="2"></option>
-      <option value="3"></option>
       <option value="5"></option>
       <option value="10"></option>
       <option value="15"></option>
@@ -63,6 +60,7 @@
       <div class="sdpi-item-value" id="hintText">
         Monitor brightness: 0..100 in SDR and HDR.<br/>
         Яркость самого монитора, как в его меню.<br/>
+        Press: toggle HDR. Rotate: change brightness.<br/>
         Windows SDR content brightness is a separate setting.
       </div>
     </div>

@@ -1,24 +1,20 @@
-const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Plugins, Actions, log } = require('./utils/plugin');
+const { MonitorWorker } = require('./utils/monitor-worker');
+const { SharedPolling } = require('./utils/shared-polling');
 
 const plugin = new Plugins();
-const HDR_SCRIPT = path.join(__dirname, 'HdrControl.ps1');
-const BRIGHTNESS_SCRIPT = path.join(__dirname, 'BrightnessControl.ps1');
-const CROSSHAIR_SCRIPT = path.join(__dirname, 'CrosshairControl.ps1');
-const PICTURE_SCRIPT = path.join(__dirname, 'PictureModeControl.ps1');
-const REFRESH_SCRIPT = path.join(__dirname, 'RefreshRateControl.ps1');
 const STATE_CACHE_FILE = path.join(__dirname, 'ui-state-cache.json');
 const DEFAULT_FILTER = 'MO32U2';
-const timers = {};
 const brightnessByFilter = {}; // shared live state per monitor filter
-const monitorCommandQueues = {};
 const brightnessEpochByFilter = {};
 const brightnessTransitions = {};
 const hdrByFilter = {}; // shared HDR on/off cache per monitor filter
 const crosshairByFilter = {}; // shared crosshair on/off cache
-let crosshairCommandQueue = Promise.resolve();
+const sharedPolling = new SharedPolling();
+let cacheWriteTimer = null;
+let lastCacheState = null;
 const pictureByFilter = {}; // shared picture-mode state per monitor
 const refreshRateByFilter = {}; // shared Hz cache per monitor
 const controllerByContext = {}; // Keypad | Knob | Encoder
@@ -49,6 +45,12 @@ function readStateCacheFile() {
 }
 
 function writeStateCacheFile() {
+  if (cacheWriteTimer) return;
+  cacheWriteTimer = setTimeout(() => { cacheWriteTimer = null; flushStateCacheFile(); }, 500);
+  cacheWriteTimer?.unref?.();
+}
+
+function flushStateCacheFile() {
   try {
     const brightness = {};
     for (const [filter, state] of Object.entries(brightnessByFilter)) {
@@ -102,19 +104,24 @@ function writeStateCacheFile() {
     }
 
     // Fixed-size overwrite only (no append / history).
-    const payload = JSON.stringify({
+    const state = {
       brightness,
       hdr,
       crosshair,
       picture,
-      refreshRate,
-      updatedAt: Date.now()
-    });
+      refreshRate
+    };
+    const serialized = JSON.stringify(state);
+    if (serialized === lastCacheState) return;
+    const payload = JSON.stringify({ ...state, updatedAt: Date.now() });
     if (payload.length > 8192) {
       log.error('ui-state-cache too large, skip write', payload.length);
       return;
     }
-    fs.writeFileSync(STATE_CACHE_FILE, payload, 'utf8');
+    const temporary = STATE_CACHE_FILE + '.tmp';
+    fs.writeFileSync(temporary, payload, 'utf8');
+    fs.renameSync(temporary, STATE_CACHE_FILE);
+    lastCacheState = serialized;
   } catch (error) {
     log.error('writeStateCacheFile', error);
   }
@@ -190,205 +197,32 @@ function hydrateStateCache() {
 hydrateStateCache();
 
 
-function runPs(scriptPath, { action, nameFilter, delta, value, stepSdr, stepHdr, expectedHdrEnabled }) {
-  const args = [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    scriptPath,
-    '-Action',
-    action
-  ];
-
-  if (nameFilter) {
-    args.push('-NameFilter', nameFilter);
-  } else {
-    args.push('-Primary');
-  }
-
-  if (typeof delta === 'number' && delta !== 0) {
-    args.push('-Delta', String(delta));
-  }
-
-  if (typeof value === 'number' && value >= 0) {
-    args.push('-Value', String(value));
-  }
-  if (typeof expectedHdrEnabled === 'boolean') {
-    args.push('-ExpectedHdr', expectedHdrEnabled ? 'on' : 'off');
-  }
-
-  if (typeof stepSdr === 'number' && stepSdr > 0) {
-    args.push('-StepSdr', String(Math.round(stepSdr)));
-  }
-
-  if (typeof stepHdr === 'number' && stepHdr > 0) {
-    args.push('-StepHdr', String(Math.round(stepHdr)));
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      args,
-      { windowsHide: true, timeout: 15000, encoding: 'utf8' },
-      (error, stdout, stderr) => {
-        if (error) {
-          let message = stderr || error.message;
-          try {
-            message = JSON.parse(String(stdout || '').trim().split(/\r?\n/).pop()).error || message;
-          } catch (_) {}
-          log.error(path.basename(scriptPath), 'failed', message);
-          reject(new Error(message));
-          return;
-        }
-
-        const text = String(stdout || '').trim();
-        const jsonLine = text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .pop();
-
-        try {
-          resolve(JSON.parse(jsonLine));
-        } catch (parseError) {
-          log.error(path.basename(scriptPath), 'bad JSON', text);
-          reject(parseError);
-        }
+const monitorWorker = new MonitorWorker({ onEvent: event => {
+  if (event !== 'displayChanged') return;
+  clearTimeout(displayEventTimer);
+  displayEventTimer = setTimeout(() => {
+    const seen = new Set();
+    for (const [kind, action, refresh] of [
+      ['hdr', plugin.hdr, refreshHdr], ['brightness', plugin.brightness, refreshBrightness],
+      ['picture', plugin.pictureMode, refreshPictureMode], ['hz', plugin.refreshRate, refreshRefreshRate]
+    ]) {
+      for (const context of Object.keys(action?.data || {})) {
+        const filter = action.data[context]?.nameFilter || DEFAULT_FILTER;
+        const key = kind + ':' + filter;
+        if (seen.has(key) || brightnessTransitions[filter]) continue;
+        seen.add(key);
+        refresh(context).catch(error => log.error('display change refresh', error));
       }
-    );
-  });
-}
+    }
+  }, 150);
+}});
+let displayEventTimer = null;
 
-function queueMonitorCommand(options, command) {
-  const filter = options.nameFilter || DEFAULT_FILTER;
-  const pending = (monitorCommandQueues[filter] || Promise.resolve()).then(command);
-  monitorCommandQueues[filter] = pending.catch(() => {});
-  return pending;
-}
-
-function runHdr(opts) {
-  return queueMonitorCommand(opts, () => runPs(HDR_SCRIPT, opts));
-}
-
-function runBrightness(opts) {
-  return queueMonitorCommand(opts, () => runPs(BRIGHTNESS_SCRIPT, opts));
-}
-
-function runRefreshRate(opts) {
-  return runPs(REFRESH_SCRIPT, opts);
-}
-
-function runCrosshair(options) {
-  const pending = crosshairCommandQueue.then(() => executeCrosshair(options));
-  crosshairCommandQueue = pending.catch(() => {});
-  return pending;
-}
-
-function executeCrosshair({ action, style }) {
-  const args = [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    CROSSHAIR_SCRIPT,
-    '-Action',
-    action
-  ];
-
-  if (typeof style === 'number' && style >= 1 && style <= 4) {
-    args.push('-Style', String(Math.round(style)));
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      args,
-      { windowsHide: true, timeout: 10000, encoding: 'utf8' },
-      (error, stdout, stderr) => {
-        const text = String(stdout || '').trim();
-        const jsonLine = text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .pop();
-
-        if (error) {
-          let message = stderr || error.message;
-          try {
-            message = JSON.parse(jsonLine).error || message;
-          } catch (_) {}
-          log.error('CrosshairControl.ps1', 'failed', message);
-          reject(new Error(message));
-          return;
-        }
-
-        try {
-          const result = JSON.parse(jsonLine);
-          if (!result?.ok) {
-            reject(new Error(result?.error || 'AIM command failed'));
-            return;
-          }
-          resolve(result);
-        } catch (parseError) {
-          log.error('CrosshairControl.ps1', 'bad JSON', text);
-          reject(parseError);
-        }
-      }
-    );
-  });
-}
-
-function runPictureMode({ action, nameFilter, value, delta }) {
-  const args = [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    PICTURE_SCRIPT,
-    '-Action',
-    action,
-    '-NameFilter',
-    nameFilter || DEFAULT_FILTER
-  ];
-
-  if (typeof value === 'number' && value >= 0) {
-    args.push('-Value', String(Math.round(value)));
-  }
-  if (typeof delta === 'number' && delta !== 0) {
-    args.push('-Delta', String(Math.round(delta)));
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      args,
-      { windowsHide: true, timeout: 20000, encoding: 'utf8' },
-      (error, stdout, stderr) => {
-        if (error) {
-          log.error('PictureModeControl.ps1', 'failed', error.message, stderr);
-          reject(new Error(stderr || error.message));
-          return;
-        }
-
-        const text = String(stdout || '').trim();
-        const jsonLine = text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .pop();
-
-        try {
-          resolve(JSON.parse(jsonLine));
-        } catch (parseError) {
-          log.error('PictureModeControl.ps1', 'bad JSON', text);
-          reject(parseError);
-        }
-      }
-    );
-  });
-}
-
+function runHdr(options) { return monitorWorker.request('hdr', options); }
+function runBrightness(options) { return monitorWorker.request('brightness', options); }
+function runRefreshRate(options) { return monitorWorker.request('refreshRate', options); }
+function runCrosshair(options) { return monitorWorker.request('crosshair', options); }
+function runPictureMode(options) { return monitorWorker.request('pictureMode', options); }
 function keyImage(label) {
   const text = String(label);
   const safe = text
@@ -534,7 +368,7 @@ function brightnessSettings(context) {
       nameFilter: DEFAULT_FILTER,
       stepSdr: 1,
       stepHdr: 1,
-      pollSec: 3
+      pollSec: 15
     },
     plugin.brightness.data[context] || {}
   );
@@ -543,7 +377,9 @@ function brightnessSettings(context) {
   // Old HDR steps were nits; they cannot be reused as monitor percentage steps.
   raw.stepHdr = raw.controlVersion === 2 ? normalizeStepValue(raw.stepHdr, 1) : 1;
   raw.controlVersion = 2;
-  raw.pollSec = Math.max(1, Math.min(3600, Math.round(Number(raw.pollSec) || 3)));
+  raw.pollSec = Math.max(5, Math.min(3600, Math.round(Number(raw.pollSec) || 15)));
+  if (raw.performanceVersion !== 1) raw.pollSec = Math.max(15, raw.pollSec);
+  raw.performanceVersion = 1;
 
   delete raw.hdrMin;
   delete raw.hdrMax;
@@ -557,15 +393,9 @@ function normalizeStepValue(value, fallback) {
 }
 
 function restartBrightnessPoll(context) {
-  if (timers[context]) {
-    clearInterval(timers[context]);
-    delete timers[context];
-  }
   const settings = brightnessSettings(context);
-  const ms = settings.pollSec * 1000;
-  timers[context] = setInterval(() => {
-    refreshBrightness(context).catch(() => {});
-  }, ms);
+  sharedPolling.subscribe('brightness:' + (settings.nameFilter || DEFAULT_FILTER), context,
+    settings.pollSec * 1000, () => refreshBrightness(context));
 }
 
 function paintHdrFromCache(context) {
@@ -794,6 +624,7 @@ function storeBrightnessFromDisplay(filter, display, keepTimers = true) {
     committing: keepTimers ? !!prev.committing : false,
     loading: false,
     pendingTicks: 0,
+    lastReadAt: Date.now(),
     lastSentValue: prev.hdrEnabled === hdrEnabled && prev.unit === 'percent'
       ? prev.lastSentValue : undefined
   };
@@ -1041,7 +872,7 @@ function adjustBrightness(context, ticks) {
   }
 
   // No baseline yet: queue ticks and load once in background (don't block UI).
-  if (!shared || !Number.isFinite(shared.value) || shared.loading) {
+  if (!shared || !Number.isFinite(shared.value) || shared.loading || Date.now() - (shared.lastReadAt || 0) > 2000) {
     if (!brightnessByFilter[filter]) {
       brightnessByFilter[filter] = {
         value: NaN,
@@ -1149,6 +980,16 @@ async function changeHdrAndRefreshBrightness(settings, action) {
   }
 }
 
+async function toggleHdrFromBrightness(context) {
+  try {
+    await changeHdrAndRefreshBrightness({ nameFilter: monitorFilter(context) }, 'toggle');
+  } catch (error) {
+    log.error('brightness press HDR', error);
+    plugin.sendToPropertyInspector({ type: 'brightnessStatus', ok: false,
+      error: String(error.message || error), settings: brightnessSettings(context) });
+  }
+}
+
 plugin.hdr = new Actions({
   default: {
     mode: 'toggle',
@@ -1159,24 +1000,21 @@ plugin.hdr = new Actions({
     rememberController(context, payload);
     // Instant paint from memory/disk cache — avoids flicker on scene switch.
     paintHdrFromCache(context);
-    timers[context] && clearInterval(timers[context]);
-    timers[context] = setInterval(() => {
-      refreshHdr(context).catch(() => {});
-    }, 5000);
+    const filter = hdrSettings(context).nameFilter || DEFAULT_FILTER;
+    sharedPolling.subscribe('hdr:' + filter, context, 30000, () => refreshHdr(context));
     // Soft refresh in background (does not clear current image first).
     refreshHdr(context).catch(() => {});
   },
 
   _willDisappear({ context }) {
-    if (timers[context]) {
-      clearInterval(timers[context]);
-      delete timers[context];
-    }
+    sharedPolling.unsubscribe(context);
     if (lastVisualByContext[context]) lastVisualByContext[context].stale = true;
     // Keep hdrByFilter cache across scenes.
   },
 
   async _didReceiveSettings({ context }) {
+    const filter = hdrSettings(context).nameFilter || DEFAULT_FILTER;
+    sharedPolling.subscribe('hdr:' + filter, context, 30000, () => refreshHdr(context));
     paintHdrFromCache(context);
     refreshHdr(context).catch(() => {});
   },
@@ -1243,6 +1081,7 @@ plugin.hdr = new Actions({
       });
       plugin.hdr.data[context] = next;
       plugin.setSettings(context, next);
+      sharedPolling.subscribe('hdr:' + next.nameFilter, context, 30000, () => refreshHdr(context));
       await refreshHdr(context);
       return;
     }
@@ -1265,12 +1104,13 @@ plugin.brightness = new Actions({
     nameFilter: DEFAULT_FILTER,
     stepSdr: 1,
     stepHdr: 1,
-    pollSec: 3
+    pollSec: 15
   },
 
   async _willAppear({ context, payload }) {
     rememberController(context, payload);
-    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2;
+    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2 ||
+      plugin.brightness.data[context]?.performanceVersion !== 1;
     const settings = brightnessSettings(context);
     plugin.brightness.data[context] = settings;
     if (needsMigration) plugin.setSettings(context, settings);
@@ -1281,17 +1121,15 @@ plugin.brightness = new Actions({
   },
 
   _willDisappear({ context }) {
-    if (timers[context]) {
-      clearInterval(timers[context]);
-      delete timers[context];
-    }
+    sharedPolling.unsubscribe(context);
     if (lastVisualByContext[context]) lastVisualByContext[context].stale = true;
     // Keep brightnessByFilter + disk cache across scene switches.
     // Do NOT delete shared monitor state here.
   },
 
   async _didReceiveSettings({ context }) {
-    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2;
+    const needsMigration = plugin.brightness.data[context]?.controlVersion !== 2 ||
+      plugin.brightness.data[context]?.performanceVersion !== 1;
     plugin.brightness.data[context] = brightnessSettings(context);
     if (needsMigration) plugin.setSettings(context, plugin.brightness.data[context]);
     paintBrightnessFromCache(context);
@@ -1319,7 +1157,7 @@ plugin.brightness = new Actions({
   },
 
   keyUp({ context }) {
-    refreshBrightness(context).catch(() => {});
+    return toggleHdrFromBrightness(context);
   },
 
   dialRotate({ context, payload }) {
@@ -1328,14 +1166,7 @@ plugin.brightness = new Actions({
   },
 
   dialDown({ context }) {
-    const filter = monitorFilter(context);
-    clearBrightnessCommit(filter);
-    const state = brightnessByFilter[filter];
-    if (state && Number.isFinite(state.value)) {
-      commitBrightness(filter).catch(() => {});
-    } else {
-      refreshBrightness(context).catch(() => {});
-    }
+    return toggleHdrFromBrightness(context);
   },
 
   sendToPlugin({ context, payload }) {
@@ -1358,7 +1189,8 @@ plugin.brightness = new Actions({
         stepSdr: payload.stepSdr,
         stepHdr: payload.stepHdr,
         pollSec: payload.pollSec,
-        controlVersion: 2
+        controlVersion: 2,
+        performanceVersion: 1
       };
       const normalized = brightnessSettings(context);
       plugin.brightness.data[context] = normalized;
@@ -1518,11 +1350,13 @@ function pictureSettings(context) {
   const raw = Object.assign(
     {
       nameFilter: DEFAULT_FILTER,
-      pollSec: 5
+      pollSec: 30
     },
     plugin.pictureMode?.data?.[context] || {}
   );
-  raw.pollSec = Math.max(1, Math.min(3600, Math.round(Number(raw.pollSec) || 5)));
+  raw.pollSec = Math.max(5, Math.min(3600, Math.round(Number(raw.pollSec) || 30)));
+  if (raw.performanceVersion !== 1) raw.pollSec = Math.max(30, raw.pollSec);
+  raw.performanceVersion = 1;
   raw.nameFilter = raw.nameFilter || DEFAULT_FILTER;
   return raw;
 }
@@ -1667,14 +1501,9 @@ async function refreshPictureMode(context) {
 }
 
 function restartPicturePoll(context) {
-  if (timers[context]) {
-    clearInterval(timers[context]);
-    delete timers[context];
-  }
-  const ms = pictureSettings(context).pollSec * 1000;
-  timers[context] = setInterval(() => {
-    refreshPictureMode(context).catch(() => {});
-  }, ms);
+  const settings = pictureSettings(context);
+  sharedPolling.subscribe('picture:' + (settings.nameFilter || DEFAULT_FILTER), context,
+    settings.pollSec * 1000, () => refreshPictureMode(context));
 }
 
 function unlockPictureCommit(filter) {
@@ -1830,11 +1659,14 @@ async function adjustPictureMode(context, ticks) {
 plugin.pictureMode = new Actions({
   default: {
     nameFilter: DEFAULT_FILTER,
-    pollSec: 5
+    pollSec: 30
   },
 
   async _willAppear({ context, payload }) {
     rememberController(context, payload);
+    const migrate = plugin.pictureMode.data[context]?.performanceVersion !== 1;
+    plugin.pictureMode.data[context] = pictureSettings(context);
+    if (migrate) plugin.setSettings(context, plugin.pictureMode.data[context]);
     paintPictureFromCache(context);
     restartPicturePoll(context);
 
@@ -1845,15 +1677,14 @@ plugin.pictureMode = new Actions({
   },
 
   _willDisappear({ context }) {
-    if (timers[context]) {
-      clearInterval(timers[context]);
-      delete timers[context];
-    }
+    sharedPolling.unsubscribe(context);
     if (lastVisualByContext[context]) lastVisualByContext[context].stale = true;
   },
 
   async _didReceiveSettings({ context }) {
+    const migrate = plugin.pictureMode.data[context]?.performanceVersion !== 1;
     plugin.pictureMode.data[context] = pictureSettings(context);
+    if (migrate) plugin.setSettings(context, plugin.pictureMode.data[context]);
     paintPictureFromCache(context);
     restartPicturePoll(context);
   },
@@ -1908,7 +1739,8 @@ plugin.pictureMode = new Actions({
     if (payload.type === 'applySettings') {
       plugin.pictureMode.data[context] = {
         nameFilter: payload.nameFilter || DEFAULT_FILTER,
-        pollSec: payload.pollSec
+        pollSec: payload.pollSec,
+        performanceVersion: 1
       };
       const normalized = pictureSettings(context);
       plugin.pictureMode.data[context] = normalized;
@@ -1983,14 +1815,9 @@ function paintRefreshRateEverywhere(filter, state) {
 }
 
 function restartRefreshRatePoll(context) {
-  if (timers[context]) {
-    clearInterval(timers[context]);
-    delete timers[context];
-  }
-  const ms = refreshRateSettings(context).pollSec * 1000;
-  timers[context] = setInterval(() => {
-    refreshRefreshRate(context).catch(() => {});
-  }, ms);
+  const settings = refreshRateSettings(context);
+  sharedPolling.subscribe('hz:' + (settings.nameFilter || DEFAULT_FILTER), context,
+    settings.pollSec * 1000, () => refreshRefreshRate(context));
 }
 
 async function refreshRefreshRate(context) {
@@ -2039,10 +1866,7 @@ plugin.refreshRate = new Actions({
   },
 
   _willDisappear({ context }) {
-    if (timers[context]) {
-      clearInterval(timers[context]);
-      delete timers[context];
-    }
+    sharedPolling.unsubscribe(context);
     if (lastVisualByContext[context]) lastVisualByContext[context].stale = true;
   },
 
